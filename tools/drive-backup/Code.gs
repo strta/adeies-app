@@ -2,7 +2,7 @@
  * Εβδομαδιαίο αντίγραφο ασφαλείας της εφαρμογής «Άδειες & Υπερωρίες» στο Google Drive.
  *
  * Τρέχει στον λογαριασμό Google του ιδιοκτήτη (script.google.com), διαβάζει το Firestore
- * με τα δικά του δικαιώματα και γράφει ένα JSON στον φάκελο «Άδειες».
+ * με τα δικά του δικαιώματα και ενημερώνει το adeies-backup.json στον φάκελο «Άδειες» (ένα αρχείο, αντικαθίσταται).
  * Η μορφή είναι ίδια με το «Αντίγραφο ασφαλείας» της εφαρμογής, άρα γίνεται επαναφορά από
  * Ρυθμίσεις → Εισαγωγή ιστορικού.
  *
@@ -12,8 +12,7 @@
 const PROJECT_ID = "adeies-stratos";
 const API_KEY = "AIzaSyCf4JHql6e_GChdHVkL0p4tW2QfyXNhA0c"; // δημόσιο κλειδί web app (ίδιο με public/js/config.js)
 const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες»
-const KEEP = 26;                                      // πόσα αντίγραφα κρατάμε (~6 μήνες)
-const PREFIX = "adeies-backup-";
+const FILE_NAME = "adeies-backup.json";               // ένα αρχείο, αντικαθίσταται κάθε φορά
 
 function setup() {
   ScriptApp.getProjectTriggers()
@@ -49,19 +48,11 @@ function backup() {
   if (!Object.keys(days).length) throw new Error("Το Firestore επέστρεψε 0 ημέρες — δεν γράφτηκε αντίγραφο.");
 
   const folder = DriveApp.getFolderById(FOLDER_ID);
-  const stamp = Utilities.formatDate(new Date(), "Europe/Athens", "yyyy-MM-dd_HHmm");
-  const file = folder.createFile(PREFIX + stamp + ".json", JSON.stringify(data, null, 1), "application/json");
-  Logger.log("Γράφτηκε %s (%s ημέρες, %s KB)", file.getName(), Object.keys(days).length, Math.round(file.getSize() / 1024));
-  prune(folder);
-}
-
-/** Κρατά τα τελευταία KEEP αντίγραφα, τα παλαιότερα πάνε στον κάδο */
-function prune(folder) {
-  const files = [];
-  const it = folder.searchFiles("title contains '" + PREFIX + "' and trashed = false");
-  while (it.hasNext()) files.push(it.next());
-  files.sort((a, b) => b.getName().localeCompare(a.getName()));
-  files.slice(KEEP).forEach((f) => f.setTrashed(true));
+  const json = JSON.stringify(data, null, 1);
+  const it = folder.getFilesByName(FILE_NAME);
+  const file = it.hasNext() ? it.next() : null;
+  if (file) file.setContent(json); else folder.createFile(FILE_NAME, json, "application/json");
+  Logger.log("Ενημερώθηκε το %s (%s ημέρες, %s KB)", FILE_NAME, Object.keys(days).length, Math.round(json.length / 1024));
 }
 
 // ---------------- Σύνδεση ως ο ιδιοκτήτης (Firebase Auth με τον λογαριασμό Google) ----------------
