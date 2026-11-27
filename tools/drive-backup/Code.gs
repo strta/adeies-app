@@ -2,15 +2,14 @@
  * Εβδομαδιαίο αντίγραφο ασφαλείας της εφαρμογής «Άδειες & Υπερωρίες» στο Google Drive.
  *
  * Τρέχει στον λογαριασμό Google του ιδιοκτήτη (script.google.com), διαβάζει το Firestore
- * με τα δικά του δικαιώματα και ενημερώνει το adeies-backup.json στον φάκελο «Άδειες» (ένα αρχείο, αντικαθίσταται).
+ * με τον λογαριασμό υπηρεσίας του Firebase (κλειδί στην ιδιότητα SA_KEY) και ενημερώνει το adeies-backup.json στον φάκελο «Άδειες» (ένα αρχείο, αντικαθίσταται).
  * Η μορφή είναι ίδια με το «Αντίγραφο ασφαλείας» της εφαρμογής, άρα γίνεται επαναφορά από
  * Ρυθμίσεις → Εισαγωγή ιστορικού.
  *
- * Εγκατάσταση: τρέξε μία φορά τη setup() — φτιάχνει το χρονοδιάγραμμα (κάθε Δευτέρα 03:00–04:00)
+ * Εγκατάσταση: βάλε το κλειδί στην ιδιότητα σεναρίου SA_KEY και τρέξε μία φορά τη setup() — φτιάχνει το χρονοδιάγραμμα (κάθε Δευτέρα 03:00–04:00)
  * και παίρνει αμέσως ένα πρώτο αντίγραφο.
  */
 const PROJECT_ID = "adeies-stratos";
-const API_KEY = "AIzaSyCf4JHql6e_GChdHVkL0p4tW2QfyXNhA0c"; // δημόσιο κλειδί web app (ίδιο με public/js/config.js)
 const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες»
 const FILE_NAME = "adeies-backup.json";               // ένα αρχείο, αντικαθίσταται κάθε φορά
 
@@ -55,23 +54,30 @@ function backup() {
   Logger.log("Ενημερώθηκε το %s (%s ημέρες, %s KB)", FILE_NAME, Object.keys(days).length, Math.round(json.length / 1024));
 }
 
-// ---------------- Σύνδεση ως ο ιδιοκτήτης (Firebase Auth με τον λογαριασμό Google) ----------------
-// Έτσι ισχύουν κανονικά οι κανόνες ασφαλείας του Firestore (μόνο το email του ιδιοκτήτη).
-function firebaseToken() {
-  const cache = CacheService.getUserCache();
-  const cached = cache.get("fbToken");
+// ---------------- Σύνδεση με τον λογαριασμό υπηρεσίας του Firebase ----------------
+// Το κλειδί JSON (Firebase → Project settings → Service accounts → Generate new private key)
+// αποθηκεύεται στις «Ιδιότητες σεναρίου» με όνομα SA_KEY — όχι μέσα στον κώδικα.
+function accessToken() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("saToken");
   if (cached) return cached;
-  const res = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=" + API_KEY, {
-    method: "post", contentType: "application/json", muteHttpExceptions: true,
-    payload: JSON.stringify({
-      postBody: "access_token=" + ScriptApp.getOAuthToken() + "&providerId=google.com",
-      requestUri: "http://localhost", returnSecureToken: true, returnIdpCredential: true,
-    }),
+  const raw = PropertiesService.getScriptProperties().getProperty("SA_KEY");
+  if (!raw) throw new Error("Λείπει η ιδιότητα SA_KEY (Ρυθμίσεις έργου → Ιδιότητες σεναρίου).");
+  const key = JSON.parse(raw);
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = (o) => Utilities.base64EncodeWebSafe(typeof o === "string" ? o : JSON.stringify(o)).replace(/=+$/, "");
+  const head = b64({ alg: "RS256", typ: "JWT" });
+  const claims = b64({ iss: key.client_email, scope: "https://www.googleapis.com/auth/datastore",
+    aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 });
+  const sig = Utilities.base64EncodeWebSafe(Utilities.computeRsaSha256Signature(head + "." + claims, key.private_key)).replace(/=+$/, "");
+  const res = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post", muteHttpExceptions: true,
+    payload: { grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: head + "." + claims + "." + sig },
   });
   const body = JSON.parse(res.getContentText());
-  if (res.getResponseCode() !== 200 || !body.idToken) throw new Error("Σύνδεση Firebase: " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
-  cache.put("fbToken", body.idToken, 50 * 60); // ισχύει 1 ώρα
-  return body.idToken;
+  if (!body.access_token) throw new Error("Σύνδεση λογαριασμού υπηρεσίας: " + res.getContentText().slice(0, 300));
+  cache.put("saToken", body.access_token, 50 * 60);
+  return body.access_token;
 }
 
 // ---------------- Firestore REST ----------------
@@ -81,7 +87,7 @@ function listCollection(name) {
   let token = "";
   do {
     const url = base + "?pageSize=300" + (token ? "&pageToken=" + encodeURIComponent(token) : "");
-    const res = UrlFetchApp.fetch(url, { headers: { Authorization: "Bearer " + firebaseToken() }, muteHttpExceptions: true });
+    const res = UrlFetchApp.fetch(url, { headers: { Authorization: "Bearer " + accessToken() }, muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error("Firestore " + name + ": " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
     const body = JSON.parse(res.getContentText());
     (body.documents || []).forEach((d) => out.push({ id: d.name.split("/").pop(), data: fields(d.fields || {}) }));

@@ -58,4 +58,5 @@ Firestore: `years/{έτος}` {days: {"2026-11-25": {k, o, n}}}, `config/kinds|s
 Επαναφορά: Ρυθμίσεις → Εισαγωγή ιστορικού → το αρχείο.
 
 Εγκατάσταση: script.google.com → Νέο έργο → επικόλληση `Code.gs` → Ρυθμίσεις έργου → «Εμφάνιση αρχείου appsscript.json» →
-επικόλληση `appsscript.json` → εκτέλεση `setup` → έγκριση δικαιωμάτων.
+επικόλληση `appsscript.json` → Ρυθμίσεις έργου → Ιδιότητες σεναρίου → `SA_KEY` = όλο το JSON του λογαριασμού υπηρεσίας
+(Firebase → Project settings → Service accounts → Generate new private key) → εκτέλεση `setup` → έγκριση δικαιωμάτων.
