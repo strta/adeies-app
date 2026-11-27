@@ -359,7 +359,7 @@ async function kindHistory(code, y, bal) {
       <div class="kpi"><div class="v">${bal.used}</div><div class="l">Χρήση</div></div>
       <div class="kpi"><div class="v ${bal.remaining < 0 ? "down" : ""}">${bal.remaining}</div><div class="l">Υπόλοιπο</div></div></div>` : ""}
     <div class="legend">${perMonth.map((v, i) => v ? `<span>${MONTHS[i].slice(0, 3)}: <b>${v}</b></span>` : "").join("")}</div>
-    ${ranges.length ? `<div class="scroll-x" style="max-height:45vh;overflow-y:auto"><table class="t">
+    ${ranges.length ? `<div class="scroll-y"><table class="t">
       <thead><tr><th>Από</th><th>Έως</th><th class="num">Ημ.</th></tr></thead>
       <tbody>${ranges.map((r) => `<tr><td><button type="button" class="btn small" data-go="${r.from}">${shortDate(r.from)}</button>${r.n === 1 ? notes(r.from) : ""}</td>
         <td>${r.to !== r.from ? shortDate(r.to) : ""}</td><td class="num">${r.n}</td></tr>`).join("")}</tbody>
@@ -574,7 +574,7 @@ export function renderSettings(el) {
       <thead><tr><th></th><th>Κωδ.</th><th>Όνομα</th><th>Δικ./έτος</th><th title="Ώρες που μετρούν στο μηνιαίο όριο δίωρης/μονόωρης">Ώρες ορίου</th><th>Υπόλοιπο</th><th>Απουσία</th><th>Περιγραφές OTS (μία ανά γραμμή)</th><th></th></tr></thead>
       <tbody id="kbody">${list.map((k, i) => kindRow(k, i)).join("")}</tbody>
     </table>
-    <div class="row wrap" style="margin-top:10px"><button class="btn" id="kadd">+ Είδος</button><button class="btn primary" id="ksave">Αποθήκευση ειδών</button></div></div>
+    <div class="row wrap" style="margin-top:10px;padding:0 14px"><button class="btn" id="kadd">+ Είδος</button><button class="btn primary" id="ksave">Αποθήκευση ειδών</button></div></div>
 
     <h2>Στοιχεία εγγράφων</h2>
     <div class="card">

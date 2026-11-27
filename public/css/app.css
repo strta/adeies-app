@@ -164,3 +164,14 @@ table.t.stats tr.cur td { background: var(--accent-2); }
 .kind-chips .chip { border-color: color-mix(in srgb, var(--c) 45%, var(--line)); }
 .kind-chips .chip:has(input:checked) { background: var(--c); border-color: var(--c); color: #fff; }
 .z { color: var(--line); }
+
+/* Οριζόντια κύλιση πινάκων: χωρίς εσωτερικό περιθώριο στην κάρτα, ώστε τίποτα να μη «περνά» αριστερά από τη σταθερή στήλη */
+.card.scroll-x { padding-left: 0; padding-right: 0; }
+.card.scroll-x table.t th:first-child, .card.scroll-x table.t td:first-child { padding-left: 14px; }
+.card.scroll-x table.t th:last-child, .card.scroll-x table.t td:last-child { padding-right: 14px; }
+.scroll-x { overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+table.t.stats th:first-child, table.t.stats td:first-child { z-index: 1; box-shadow: 1px 0 0 var(--line); }
+/* Κάθετη κύλιση μέσα σε παράθυρο: σταθερή κεφαλίδα */
+.scroll-y { overflow: auto; max-height: 45vh; overscroll-behavior: contain; }
+.scroll-y thead th { position: sticky; top: 0; background: var(--card); z-index: 2; }
+dialog .scroll-y table.t th:first-child, dialog .scroll-y table.t td:first-child { padding-left: 2px; }
