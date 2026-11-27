@@ -10,6 +10,7 @@
  * και παίρνει αμέσως ένα πρώτο αντίγραφο.
  */
 const PROJECT_ID = "adeies-stratos";
+const API_KEY = "AIzaSyCf4JHql6e_GChdHVkL0p4tW2QfyXNhA0c"; // δημόσιο κλειδί web app (ίδιο με public/js/config.js)
 const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες»
 const KEEP = 26;                                      // πόσα αντίγραφα κρατάμε (~6 μήνες)
 const PREFIX = "adeies-backup-";
@@ -63,6 +64,25 @@ function prune(folder) {
   files.slice(KEEP).forEach((f) => f.setTrashed(true));
 }
 
+// ---------------- Σύνδεση ως ο ιδιοκτήτης (Firebase Auth με τον λογαριασμό Google) ----------------
+// Έτσι ισχύουν κανονικά οι κανόνες ασφαλείας του Firestore (μόνο το email του ιδιοκτήτη).
+function firebaseToken() {
+  const cache = CacheService.getUserCache();
+  const cached = cache.get("fbToken");
+  if (cached) return cached;
+  const res = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=" + API_KEY, {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    payload: JSON.stringify({
+      postBody: "access_token=" + ScriptApp.getOAuthToken() + "&providerId=google.com",
+      requestUri: "http://localhost", returnSecureToken: true, returnIdpCredential: true,
+    }),
+  });
+  const body = JSON.parse(res.getContentText());
+  if (res.getResponseCode() !== 200 || !body.idToken) throw new Error("Σύνδεση Firebase: " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
+  cache.put("fbToken", body.idToken, 50 * 60); // ισχύει 1 ώρα
+  return body.idToken;
+}
+
 // ---------------- Firestore REST ----------------
 function listCollection(name) {
   const base = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents/" + name;
@@ -70,7 +90,7 @@ function listCollection(name) {
   let token = "";
   do {
     const url = base + "?pageSize=300" + (token ? "&pageToken=" + encodeURIComponent(token) : "");
-    const res = UrlFetchApp.fetch(url, { headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    const res = UrlFetchApp.fetch(url, { headers: { Authorization: "Bearer " + firebaseToken() }, muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error("Firestore " + name + ": " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
     const body = JSON.parse(res.getContentText());
     (body.documents || []).forEach((d) => out.push({ id: d.name.split("/").pop(), data: fields(d.fields || {}) }));
