@@ -4,7 +4,7 @@ import {
   importOts, importHistory, backupData, logout, DEMO,
 } from "./store.js";
 import {
-  MONTHS, WEEKDAYS, isoOf, parts, daysInMonth, weekday, dmy, todayIso, eachDay, greekHolidays, holidayName,
+  MONTHS, WEEKDAYS, isoOf, parts, addDays, daysInMonth, weekday, dmy, todayIso, eachDay, greekHolidays, holidayName,
   kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround, shortLeave, shortHoursOf,
 } from "./logic.js";
 import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES, prepareSignature } from "./docgen.js";
@@ -267,7 +267,7 @@ export function renderBalances(el) {
   const list = balances({ days: state.days, kinds: kinds(), repo: state.repo, blood: state.blood, settings: settings() }, y);
   el.innerHTML = `${noKindsNotice()}
     ${yearChips(y)}
-    <div class="bal-grid">${list.map((b) => `<div class="card bal" style="border-left-color:${b.color}">
+    <div class="bal-grid">${list.map((b) => `<div class="card bal" data-hist="${esc(b.code)}" style="border-left-color:${b.color};cursor:pointer" title="Ιστορικό ${y}">
       <div><b>${esc(b.name)}</b> <span class="muted small">${TYPE_LABEL[b.type] || ""}</span></div>
       <div class="rem ${b.remaining < 0 ? "neg" : ""}">${b.remaining}</div>
       <div class="calc">${b.type === "annual" ? "" : `μεταφορά ${b.carry} + `}${b.type === "carry" || b.type === "annual" ? "δικαίωμα" : "νέα"} ${b.earned} − χρήση ${b.used}</div>
@@ -288,10 +288,57 @@ export function renderBalances(el) {
     </table></div>`;
 
   el.querySelectorAll("[data-year]").forEach((b) => b.addEventListener("click", () => { balYear = Number(b.dataset.year); renderBalances(el); }));
+  el.querySelectorAll("[data-hist]").forEach((c) => c.addEventListener("click", () => kindHistory(c.dataset.hist, y, list.find((b) => b.code === c.dataset.hist))));
   el.querySelector("[data-add-repo]").addEventListener("click", () => editRepo({ date: todayIso(), days: 1, kind: "ΡΕΠ" }));
   el.querySelectorAll("[data-repo]").forEach((r) => r.addEventListener("click", () => editRepo(state.repo.find((x) => x.id === r.dataset.repo))));
   el.querySelector("[data-add-blood]").addEventListener("click", () => editBlood({ date: todayIso(), days: 2 }));
   el.querySelectorAll("[data-blood]").forEach((r) => r.addEventListener("click", () => editBlood(state.blood.find((x) => x.id === r.dataset.blood))));
+}
+
+/** Ιστορικό ενός είδους για ένα έτος: διαστήματα, ανά μήνα, και (για ρεπό/αιμοδοσίες) τι δόθηκε */
+async function kindHistory(code, y, bal) {
+  const dates = Object.keys(state.days).filter((d) => d.startsWith(`${y}-`) && state.days[d].k === code && weekday(d) !== 0).sort();
+  // συνεχόμενα διαστήματα (τα Σαββατοκύριακα/αργίες ανάμεσα δεν τα «σπάνε»)
+  const ranges = [];
+  for (const d of dates) {
+    const last = ranges[ranges.length - 1];
+    if (last) {
+      let gap = true;
+      for (let x = addDays(last.to, 1); x < d; x = addDays(x, 1)) {
+        const wd = weekday(x);
+        if (!(wd === 0 || wd === 6 || state.days[x]?.k === HOLIDAY || holidayName(x))) { gap = false; break; }
+      }
+      if (gap) { last.to = d; last.n++; continue; }
+    }
+    ranges.push({ from: d, to: d, n: 1 });
+  }
+  const perMonth = Array(12).fill(0);
+  dates.forEach((d) => perMonth[parts(d)[1] - 1]++);
+  const earned = bal?.type === "repo" || bal?.type === "repoP" ? state.repo.filter((r) => (r.kind || "ΡΕΠ") === code && r.date.startsWith(`${y}-`))
+    : bal?.type === "blood" ? state.blood.filter((r) => r.date.startsWith(`${y}-`)) : [];
+  const notes = (d) => state.days[d]?.n ? ` <span class="muted">· ${esc(state.days[d].n)}</span>` : "";
+  const { action, data } = await dialog(`
+    <h3><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${kindColor(code)}"></span> ${esc(kindName(code))} — ${y}</h3>
+    ${bal ? `<div class="kpis" style="margin:8px 0">
+      ${bal.type !== "annual" ? `<div class="kpi"><div class="v">${bal.carry}</div><div class="l">Μεταφορά</div></div>` : ""}
+      <div class="kpi"><div class="v">${bal.earned}</div><div class="l">${bal.type === "carry" || bal.type === "annual" ? "Δικαίωμα" : "Νέα"}</div></div>
+      <div class="kpi"><div class="v">${bal.used}</div><div class="l">Χρήση</div></div>
+      <div class="kpi"><div class="v ${bal.remaining < 0 ? "down" : ""}">${bal.remaining}</div><div class="l">Υπόλοιπο</div></div></div>` : ""}
+    <div class="legend">${perMonth.map((v, i) => v ? `<span>${MONTHS[i].slice(0, 3)}: <b>${v}</b></span>` : "").join("")}</div>
+    ${ranges.length ? `<div class="scroll-x" style="max-height:45vh;overflow-y:auto"><table class="t">
+      <thead><tr><th>Από</th><th>Έως</th><th class="num">Ημ.</th></tr></thead>
+      <tbody>${ranges.map((r) => `<tr><td><button type="button" class="btn small" data-go="${r.from}">${shortDate(r.from)}</button>${r.n === 1 ? notes(r.from) : ""}</td>
+        <td>${r.to !== r.from ? shortDate(r.to) : ""}</td><td class="num">${r.n}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="2">Σύνολο</td><td class="num">${dates.length}</td></tr></tfoot></table></div>`
+      : `<p class="muted">Καμία χρήση το ${y}.</p>`}
+    ${earned.length ? `<label>${bal.type === "blood" ? "Αιμοδοσίες" : "Ρεπό που δόθηκαν"} το ${y}</label>
+      <table class="t"><tbody>${earned.map((r) => `<tr><td>${dmy(r.date)}</td><td>${esc(r.signer || r.note || "")}</td><td>${esc(r.reason || "")}</td><td class="num">${r.days}</td></tr>`).join("")}</tbody></table>` : ""}
+    <div class="dlg-actions"><button class="btn primary" value="close">Κλείσιμο</button></div>`, (f) => {
+    f.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => {
+      const [yy, mm] = parts(b.dataset.go); setCur(yy, mm);
+      f.closest("dialog").close("close"); location.hash = "#/month";
+    }));
+  });
 }
 
 async function editRepo(r) {
