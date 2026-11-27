@@ -296,3 +296,17 @@ export function shortLeave(days, kinds, y, m, limit = 4, extra = {}) {
   const used = items.reduce((a, x) => a + x.hours, 0);
   return { used, limit, remaining: limit - used, over: limit > 0 && used > limit, items };
 }
+
+// ---------- Υπογράφοντες σημειώματος (με ιστορικό) ----------
+/**
+ * profile.signers: [{ from: "2026-01-01", title1, name1, title2, title2b, name2 }]
+ * Επιστρέφει όσους ίσχυαν την ημερομηνία iso (τελευταία εγγραφή με from ≤ iso).
+ * Συμβατότητα: παλιά profile.signer1/signer2 = μία εγγραφή από πάντα.
+ */
+export function signersFor(profile = {}, iso, defaults = {}) {
+  let list = (profile.signers || []).filter((s) => s && (s.name1 || s.name2));
+  if (!list.length && (profile.signer1 || profile.signer2)) list = [{ from: "1900-01-01", name1: profile.signer1, name2: profile.signer2 }];
+  list = list.slice().sort((a, b) => (a.from || "").localeCompare(b.from || ""));
+  const cur = list.filter((s) => (s.from || "") <= iso).pop() || list[0] || {};
+  return { ...defaults, ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v !== "" && v != null)) };
+}

@@ -8,7 +8,7 @@ import {
   kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround, shortLeave, shortHoursOf,
 } from "./logic.js";
 import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES, prepareSignature } from "./docgen.js";
-import { DEFAULT_KINDS, DEFAULT_SETTINGS, PROFILE_FIELDS } from "./defaults.js";
+import { DEFAULT_KINDS, DEFAULT_SETTINGS, PROFILE_FIELDS, SIGNER_DEFAULTS } from "./defaults.js";
 import { esc, toast, dialog, confirmDlg } from "./ui.js";
 import { OWNER_EMAIL } from "./config.js";
 
@@ -551,6 +551,14 @@ export function renderSettings(el) {
         <div style="grid-column:1/-1;margin-top:10px"><button class="btn primary">Αποθήκευση στοιχείων</button></div></form>
     </div>
 
+    <h2>Υπογράφοντες σημειώματος υπερωριών</h2>
+    <div class="card">
+      <p class="muted" style="margin-top:0">Όταν αλλάζει προϊστάμενος ή διευθυντής, πάτα «+ Αλλαγή» και βάλε από πότε ισχύει.
+        Κάθε σημείωμα παίρνει όσους ίσχυαν την τελευταία μέρα του μήνα του — τα παλιά βγαίνουν με τους τότε υπογράφοντες.</p>
+      <div id="signers">${signerRows().map(signerRow).join("")}</div>
+      <div class="row wrap" style="margin-top:10px"><button class="btn" id="sgAdd">+ Αλλαγή υπογραφόντων</button><button class="btn primary" id="sgSave">Αποθήκευση</button></div>
+    </div>
+
     <h2>Υπογραφή</h2>
     <div class="card">
       ${state.signature ? `<div style="background:#fff;border-radius:8px;padding:8px;display:inline-block"><img src="data:image/png;base64,${state.signature.b64}" alt="Υπογραφή" style="height:70px"></div>` : `<div class="muted">Δεν έχει οριστεί υπογραφή.</div>`}
@@ -642,8 +650,22 @@ export function renderSettings(el) {
   el.querySelector("#prof").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const d = Object.fromEntries([...new FormData(ev.target).entries()].map(([k, v]) => [k, String(v).trim()]));
-    await saveProfile(d);
+    await saveProfile({ ...state.profile, ...d });
     toast("Αποθηκεύτηκαν τα στοιχεία");
+  });
+  const sgBox = el.querySelector("#signers");
+  el.querySelector("#sgAdd").addEventListener("click", () => {
+    const rows = readSigners(sgBox);
+    const last = rows.sort((a, b) => (a.from || "").localeCompare(b.from || "")).pop() || { ...SIGNER_DEFAULTS };
+    sgBox.insertAdjacentHTML("beforeend", signerRow({ ...last, from: todayIso() }));
+    sgBox.lastElementChild.scrollIntoView({ block: "center" });
+  });
+  sgBox.addEventListener("click", (e) => { if (e.target.matches("[data-sgdel]")) e.target.closest(".sg").remove(); });
+  el.querySelector("#sgSave").addEventListener("click", async () => {
+    const signers = readSigners(sgBox).sort((a, b) => (a.from || "").localeCompare(b.from || ""));
+    const { signer1, signer2, ...rest } = state.profile;
+    await saveProfile({ ...rest, signers });
+    toast("Αποθηκεύτηκαν οι υπογράφοντες");
   });
   el.querySelector("#sigPut").addEventListener("change", async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
@@ -659,6 +681,26 @@ export function renderSettings(el) {
   });
   el.querySelector("#autoSign")?.addEventListener("change", (e) => saveSettings({ autoSign: e.target.checked }));
   el.querySelector("#tplReset")?.addEventListener("click", async () => { await saveTemplate({}); toast("Επαναφορά αρχικού προτύπου"); });
+}
+
+const SG_FIELDS = [["title1", "Τμήμα — τίτλος"], ["name1", "Τμήμα — ονοματεπώνυμο"], ["title2", "Διεύθυνση — τίτλος (γρ. 1)"],
+  ["title2b", "Διεύθυνση — τίτλος (γρ. 2)"], ["name2", "Διεύθυνση — ονοματεπώνυμο"]];
+function signerRows() {
+  const p = state.profile || {};
+  if (p.signers?.length) return p.signers;
+  if (p.signer1 || p.signer2) return [{ from: "", ...SIGNER_DEFAULTS, name1: p.signer1 || "", name2: p.signer2 || "" }];
+  return [{ from: "", ...SIGNER_DEFAULTS, name1: "", name2: "" }];
+}
+function signerRow(sg) {
+  return `<div class="sg card" style="box-shadow:none;border:1px solid var(--line);margin:8px 0">
+    <div class="row between"><div style="flex:1"><label style="margin-top:0">Ισχύει από (κενό = από πάντα)</label><input type="date" name="from" value="${esc(sg.from || "")}"></div>
+      <button type="button" class="btn small danger" data-sgdel title="Αφαίρεση" style="margin-left:8px">✕</button></div>
+    <div>${SG_FIELDS.map(([k, l]) => `<div><label>${l}</label><input name="${k}" value="${esc(sg[k] ?? SIGNER_DEFAULTS[k] ?? "")}"></div>`).join("")}</div>
+  </div>`;
+}
+function readSigners(box) {
+  return [...box.querySelectorAll(".sg")].map((c) => Object.fromEntries(["from", ...SG_FIELDS.map(([k]) => k)]
+    .map((k) => [k, c.querySelector(`[name=${k}]`).value.trim()]))).filter((x) => x.name1 || x.name2);
 }
 
 function kindRow(k, i) {

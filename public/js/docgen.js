@@ -1,5 +1,6 @@
 // Παραγωγή του «Υπηρεσιακού Σημειώματος» υπερωριών (.docx) από πρότυπο με {{πεδία}}.
-import { overtimeRows, greekWords, MONTHS_ACC } from "./logic.js";
+import { overtimeRows, greekWords, MONTHS_ACC, signersFor, isoOf, daysInMonth } from "./logic.js";
+import { SIGNER_DEFAULTS } from "./defaults.js";
 
 let jszipLoading;
 export function loadScript(src, globalName) {
@@ -84,6 +85,8 @@ export async function buildOvertimeDoc({ days, settings, template, signature, pr
     curMonth: MONTHS_ACC[m - 1], curYear: String(y),
     NumHours: String(rows.totalWork), WordHours: greekWords(rows.totalWork),
     NumHoursArgia: String(rows.totalHol), WordHoursArgia: greekWords(rows.totalHol), ...profileValues(profile),
+    // υπογράφοντες που ίσχυαν την τελευταία μέρα του μήνα
+    ...Object.fromEntries(Object.entries(signersFor(profile, isoOf(y, m, daysInMonth(y, m)), SIGNER_DEFAULTS)).map(([k, v]) => [`s_${k}`, v ?? ""])),
   };
   for (const [k, v] of Object.entries(values)) doc = doc.split(`{{${k}}}`).join(x(v));
   // Οι πίνακες αντικαθιστούν ολόκληρη την παράγραφο που έχει το {{tblHours}} / {{tblHoursArgia}}

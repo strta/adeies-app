@@ -71,6 +71,14 @@ t("Διάστημα άδειας γύρω από μια μέρα", () => {
   const days = { "2026-12-10": { k: "ΑΔΕ" }, "2026-12-11": { k: "ΑΔΕ" }, "2026-12-14": { k: "ΑΔΕ" }, "2026-12-15": { k: "ΡΕΠ" }, "2026-12-08": { k: "ΑΔΕ" } };
   assert.deepEqual(L.blockAround(days, "2026-12-11", "ΑΔΕ"), { from: "2026-12-10", to: "2026-12-14", days: 3 });
 });
+t("Υπογράφοντες ανά ημερομηνία", () => {
+  const p = { signers: [{ from: "2020-01-01", name1: "Α", name2: "Β" }, { from: "2027-01-01", name1: "Γ", title1: "Η ΠΡΟΪΣΤΑΜΕΝΗ" }] };
+  assert.equal(L.signersFor(p, "2026-10-31", { title1: "T" }).name1, "Α");
+  assert.equal(L.signersFor(p, "2026-10-31", { title1: "T" }).title1, "T");
+  const n = L.signersFor(p, "2027-02-28", { title1: "T" });
+  assert.equal(n.name1, "Γ"); assert.equal(n.title1, "Η ΠΡΟΪΣΤΑΜΕΝΗ"); assert.equal(n.name2, undefined);
+  assert.equal(L.signersFor({ signer1: "Χ" }, "2026-01-31").name1, "Χ");
+});
 console.log(`\n${n} έλεγχοι πέρασαν`);
 t("Όριο δίωρων/μονόωρων 4 ώρες/μήνα", () => {
   const kinds = [{ code: "ΔΙΩ" }, { code: "ΜΟΝ" }, { code: "ΥΠΔΙΩ" }];
@@ -79,5 +87,13 @@ t("Όριο δίωρων/μονόωρων 4 ώρες/μήνα", () => {
   assert.equal(s.used, 3); assert.equal(s.remaining, 1); assert.equal(s.over, false);
   assert.equal(L.shortLeave(days, kinds, 2026, 11, 4, { "2026-11-20": "ΔΙΩ" }).over, true);
   assert.equal(L.shortLeave(days, kinds, 2026, 11, 4, { "2026-11-20": "ΜΟΝ" }).over, false);
+});
+t("Υπογράφοντες ανά ημερομηνία", () => {
+  const p = { signers: [{ from: "2020-01-01", name1: "Α", name2: "Β" }, { from: "2027-01-01", name1: "Γ", title1: "Η ΠΡΟΪΣΤΑΜΕΝΗ" }] };
+  assert.equal(L.signersFor(p, "2026-10-31", { title1: "T" }).name1, "Α");
+  assert.equal(L.signersFor(p, "2026-10-31", { title1: "T" }).title1, "T");
+  const n = L.signersFor(p, "2027-02-28", { title1: "T" });
+  assert.equal(n.name1, "Γ"); assert.equal(n.title1, "Η ΠΡΟΪΣΤΑΜΕΝΗ"); assert.equal(n.name2, undefined);
+  assert.equal(L.signersFor({ signer1: "Χ" }, "2026-01-31").name1, "Χ");
 });
 console.log(`\n${n} έλεγχοι πέρασαν`);
