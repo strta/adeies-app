@@ -5,9 +5,9 @@ import {
 } from "./store.js";
 import {
   MONTHS, WEEKDAYS, isoOf, parts, daysInMonth, weekday, dmy, todayIso, eachDay, greekHolidays, holidayName,
-  kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY,
+  kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround,
 } from "./logic.js";
-import { buildOvertimeDoc, download, loadScript } from "./docgen.js";
+import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES } from "./docgen.js";
 import { DEFAULT_KINDS, DEFAULT_SETTINGS } from "./defaults.js";
 import { esc, toast, dialog, confirmDlg } from "./ui.js";
 import { OWNER_EMAIL } from "./config.js";
@@ -139,6 +139,7 @@ async function editDay(iso) {
     <div class="dlg-actions">
       ${e.k || e.o || e.n ? `<button class="btn danger" value="delete" formnovalidate>Διαγραφή</button>` : ""}
       <button class="btn" value="cancel" formnovalidate>Άκυρο</button>
+      <button class="btn" value="doc" title="Αποθήκευση και αίτηση σε Word">📄 Αίτηση</button>
       <button class="btn primary" value="save">Αποθήκευση</button>
     </div>`, (form) => {
     const o = form.querySelector("[name=o]");
@@ -147,7 +148,7 @@ async function editDay(iso) {
   });
   try {
     if (action === "delete") { await setDay(iso, null); toast("Διαγράφηκε"); return; }
-    if (action !== "save") return;
+    if (action !== "save" && action !== "doc") return;
     const entry = { k: data.k || "", o: Number(data.o) || 0, n: (data.n || "").trim() };
     if (data.to && data.to > iso && entry.k) {
       const changes = { [iso]: entry };
@@ -161,7 +162,71 @@ async function editDay(iso) {
     } else {
       await setDay(iso, entry);
     }
-  } catch (err) { console.error(err); toast("Σφάλμα αποθήκευσης: " + err.message, 5000); }
+    if (action === "doc") await applicationDialog(iso, entry.k);
+  } catch (err) { console.error(err); toast("Σφάλμα: " + err.message, 5000); }
+}
+
+// =====================================================================================
+// Αιτήσεις σε Word (άδεια, δίωρη/μονόωρη, αναρρωτική)
+// =====================================================================================
+const addMin = (hm, min) => { const [h, m] = hm.split(":").map(Number); const t = h * 60 + m + min; return `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`; };
+const pad2 = (n) => String(n).padStart(2, "0");
+async function applicationDialog(iso, code) {
+  const ff = formFor(code);
+  if (!ff) { toast("Δεν υπάρχει έντυπο για αυτό το είδος. Διάλεξε πρώτα είδος άδειας."); return; }
+  const [form, sub] = ff;
+  const today = todayIso();
+  const b = blockAround(state.days, iso, code);
+  const dateRow = `<label>Ημερομηνία αίτησης</label><input type="date" name="today" value="${today}" required>`;
+  let body = "";
+  if (form === "adeia") {
+    body = `<label>Είδος στο έντυπο</label><select name="box">${ADEIA_BOXES.map((x) => `<option ${x === sub ? "selected" : ""}>${x}</option>`).join("")}</select>
+      <div class="grid2"><div><label>Από</label><input type="date" name="from" value="${b.from}" required></div>
+      <div><label>Έως και</label><input type="date" name="to" value="${b.to}" required></div></div>
+      <label>Ημέρες</label><input type="number" name="days" value="${b.days}" min="1" required>${dateRow}`;
+  } else if (form === "diwri") {
+    const h = code === "ΜΟΝ" ? 1 : 2;
+    body = `<div class="grid2"><div><label>Αίτημα</label><select name="type"><option>Άδεια Εξόδου</option><option>Βραδεία Προσέλευση</option></select></div>
+      <div><label>Αιτιολογία</label><select name="reason"><option ${code === "ΥΠΔΙΩ" ? "" : "selected"}>ΓΙΑ ΙΔΙΩΤΙΚΟΥΣ ΛΟΓΟΥΣ</option><option ${code === "ΥΠΔΙΩ" ? "selected" : ""}>ΓΙΑ ΥΠΗΡΕΣΙΑ</option></select></div></div>
+      <div class="grid2"><div><label>Ημερομηνία</label><input type="date" name="date" value="${iso}" required></div>
+      <div><label>Ώρες</label><input type="number" name="hours" value="${h}" min="1" max="8" required></div>
+      <div><label>Από</label><input type="time" name="fromTime" value="${addMin("15:00", -60 * h)}" required></div>
+      <div><label>Έως και</label><input type="time" name="toTime" value="15:00" required></div></div>${dateRow}`;
+  } else {
+    body = `<label>Αιτούμαι με</label><select name="mode"><option value="yd" ${sub === "yd" ? "selected" : ""}>Υπεύθυνη δήλωση (ν.3528/2007 άρθ. 55 παρ. 2)</option>
+        <option value="doctor" ${sub === "doctor" ? "selected" : ""}>Ιατρική γνωμάτευση</option></select>
+      <div class="grid2"><div><label>Από</label><input type="date" name="from" value="${b.from}" required></div>
+      <div><label>Έως και</label><input type="date" name="to" value="${b.to}" required></div></div>
+      <label>Ημέρες</label><input type="number" name="days" value="${b.days}" min="1" required>${dateRow}`;
+  }
+  const { action, data } = await dialog(`<h3>📄 ${FORMS[form].title}</h3>${body}
+    <div class="dlg-actions"><button class="btn" value="cancel" formnovalidate>Άκυρο</button><button class="btn primary" value="ok">Word</button></div>`, (f) => {
+    // αλλαγή ωρών ή «έως» → υπολογισμός «από»
+    const hours = f.querySelector("[name=hours]"), to = f.querySelector("[name=toTime]"), fr = f.querySelector("[name=fromTime]"), type = f.querySelector("[name=type]");
+    const upd = () => { if (type.value === "Βραδεία Προσέλευση") { fr.value = "07:00"; to.value = addMin("07:00", 60 * Number(hours.value || 0)); } else fr.value = addMin(to.value, -60 * Number(hours.value || 0)); };
+    hours?.addEventListener("input", upd); to?.addEventListener("change", () => { if (type.value !== "Βραδεία Προσέλευση") upd(); }); type?.addEventListener("change", upd);
+  });
+  if (action !== "ok") return;
+  const v = { today: dmy(data.today) };
+  let opts = {}, name;
+  if (form === "adeia") {
+    Object.assign(v, { from: dmy(data.from), to: dmy(data.to), days: data.days });
+    opts = { check: [data.box] };
+    name = `Αίτηση ${data.box} ${dmy(data.from).replace(/\//g, "-")}.docx`;
+  } else if (form === "diwri") {
+    const h = Number(data.hours);
+    Object.assign(v, { date: dmy(data.date), hours: h, hoursLabel: h === 1 ? "ώρας" : "ωρών", fromTime: data.fromTime, toTime: data.toTime });
+    opts = { check: [data.type, data.reason] };
+    name = `Αίτηση ${h === 1 ? "μονόωρης" : "δίωρης"} ${dmy(data.date).replace(/\//g, "-")}.docx`;
+  } else {
+    Object.assign(v, { from: dmy(data.from), to: dmy(data.to), days: data.days,
+      sickText: data.from === data.to ? `στις ${dmy(data.from)}` : `από ${dmy(data.from)} έως και ${dmy(data.to)}` });
+    opts = { dropParaWith: [data.mode === "yd" ? "{{to}}" : "{{sickText}}"] };
+    name = `Αίτηση αναρρωτικής ${dmy(data.from).replace(/\//g, "-")}.docx`;
+  }
+  const blob = await buildForm(form, v, opts);
+  download(blob, name);
+  toast("Κατέβηκε: " + name);
 }
 
 // =====================================================================================

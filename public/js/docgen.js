@@ -71,3 +71,59 @@ export function download(blob, name) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+
+// =====================================================================================
+// Αιτήσεις (άδεια, δίωρη, αναρρωτική) από τα πρότυπα public/templates/aitisi-*.docx
+// =====================================================================================
+export const FORMS = {
+  adeia: { file: "aitisi-adeias.docx", title: "Αίτηση άδειας" },
+  diwri: { file: "aitisi-diwris.docx", title: "Αίτηση δίωρης / μονόωρης" },
+  anarrotiki: { file: "aitisi-anarrotikis.docx", title: "Αίτηση αναρρωτικής" },
+};
+/** Ετικέτες των κουτιών στην αίτηση άδειας (όπως στο έντυπο) */
+export const ADEIA_BOXES = ["Κανονική Άδεια", "Κανονική Άδεια Κλειστού Χώρου", "Γονική", "Ρεπό Οφειλόμενο", "Αιμοδοτική Άδεια",
+  "Επιστημονική", "Ειδική ΟΤΑ", "Τιμητική", "Ειδική", "Εκλογική", "Εκπαιδευτική", "Δικαστική", "Υπηρεσιακή", "Αναπλήρωσης με αποδοχές", "Άλλη"];
+const KIND_FORM = {
+  ΑΔΕ: ["adeia", "Κανονική Άδεια"], ΓΟΝ: ["adeia", "Γονική"], ΡΕΠ: ["adeia", "Ρεπό Οφειλόμενο"], ΡΕΠΠ: ["adeia", "Ρεπό Οφειλόμενο"],
+  ΑΙΜ: ["adeia", "Αιμοδοτική Άδεια"], ΣΕΜ: ["adeia", "Εκπαιδευτική"], ΔΙΚ: ["adeia", "Δικαστική"],
+  ΔΙΩ: ["diwri"], ΥΠΔΙΩ: ["diwri"], ΜΟΝ: ["diwri"], ΑΣΘ: ["anarrotiki", "doctor"], ΑΣΘΥ: ["anarrotiki", "yd"],
+};
+/** Ποιο έντυπο ταιριάζει σε ένα είδος (null για ΑΡΓ, τηλεργασία κ.λπ.) */
+export function formFor(code) {
+  if (!code || code === "ΑΡΓ" || code === "ΤΗΛ") return null;
+  return KIND_FORM[code] || ["adeia", "Άλλη"];
+}
+
+/** Τσεκάρει τα κουτιά (FORMCHECKBOX) των παραγράφων που το κείμενό τους είναι μία από τις ετικέτες */
+function checkBoxes(doc, labels) {
+  const want = new Set(labels.map((l) => l.trim()));
+  return doc.replace(/<w:p\b(?:(?!<w:p\b).)*?<\/w:p>/gs, (p) => {
+    if (!p.includes("FORMCHECKBOX")) return p;
+    const text = [...p.matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join("").replace(/\s+/g, " ").trim();
+    if (!want.has(text)) return p;
+    return p.replace(/(<w:checkBox>(?:(?!<\/w:checkBox>).)*?<w:default w:val=")0(")/s, "$11$2");
+  });
+}
+
+/**
+ * values: { today, from, to, days, date, hours, fromTime, toTime, sickText, ... }
+ * opts: { check: [ετικέτες], dropParaWith: [κείμενο] }
+ */
+export async function buildForm(kind, values, opts = {}) {
+  const f = FORMS[kind];
+  const res = await fetch("/templates/" + f.file);
+  if (!res.ok) throw new Error("Δεν βρέθηκε το πρότυπο " + f.file);
+  const Zip = await JSZip();
+  const zip = await Zip.loadAsync(await res.arrayBuffer());
+  let doc = await zip.file("word/document.xml").async("string");
+  // ολόκληρες παράγραφοι που δεν χρειάζονται (π.χ. το 2ο σκέλος της αναρρωτικής)
+  for (const t of opts.dropParaWith || []) {
+    doc = doc.replace(new RegExp(`<w:p\\b(?:(?!<w:p\\b).)*?${t.replace(/[{}]/g, "\\$&")}.*?</w:p>`, "s"), "");
+  }
+  for (const [k, v] of Object.entries(values)) doc = doc.split(`{{${k}}}`).join(x(v));
+  if (opts.check?.length) doc = checkBoxes(doc, opts.check);
+  const left = doc.match(/\{\{\w+\}\}/g);
+  if (left) doc = doc.replace(/\{\{\w+\}\}/g, "……");
+  zip.file("word/document.xml", doc);
+  return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+}

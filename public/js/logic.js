@@ -253,3 +253,24 @@ export function reconcile(days, ots, kinds, from, to) {
   rows.sort((a, b) => a.iso.localeCompare(b.iso));
   return { ok, rows, lastOts };
 }
+
+/**
+ * Συνεχόμενο διάστημα του ίδιου είδους γύρω από μια μέρα (παραλείπει Σαββατοκύριακα και αργίες).
+ * Επιστρέφει { from, to, days } — days = ημέρες με αυτό το είδος.
+ */
+export function blockAround(days, iso, code) {
+  const skip = (d) => { const wd = weekday(d); return wd === 0 || wd === 6 || days[d]?.k === HOLIDAY || !!holidayName(d); };
+  const walk = (dir) => {
+    let edge = iso, d = addDays(iso, dir);
+    for (let guard = 0; guard < 400; guard++, d = addDays(d, dir)) {
+      if (days[d]?.k === code) { edge = d; continue; }
+      if (skip(d) && !days[d]?.k) continue;
+      break;
+    }
+    return edge;
+  };
+  const from = walk(-1), to = walk(1);
+  let n = 0;
+  for (const d of eachDay(from, to)) if (days[d]?.k === code) n++;
+  return { from, to, days: n };
+}
