@@ -1,0 +1,40 @@
+# Αυτόματο ανέβασμα στο Firebase σε κάθε αλλαγή στο main.
+# Χρειάζεται το secret FIREBASE_SERVICE_ACCOUNT (κλειδί JSON λογαριασμού υπηρεσίας).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Έλεγχοι
+        run: |
+          node tests/logic.test.mjs
+          for f in public/js/*.js public/sw.js; do node --input-type=module --check < "$f" || { echo "::error::Συντακτικό λάθος στο $f"; exit 1; }; done
+          if grep -q 'apiKey: ""' public/js/config.js; then echo "::error::Λείπει το firebaseConfig στο public/js/config.js"; exit 1; fi
+          if grep -q 'ΒΑΛΕ_ΤΟ_PROJECT_ID' .firebaserc; then echo "::error::Λείπει το project ID στο .firebaserc"; exit 1; fi
+
+      - name: Deploy στο Firebase
+        env:
+          SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA_KEY" ]; then echo "::error::Λείπει το secret FIREBASE_SERVICE_ACCOUNT"; exit 1; fi
+          printf '%s' "$SA_KEY" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@15 deploy --only hosting,firestore --non-interactive --force
+          rm -f "$RUNNER_TEMP/sa.json"
