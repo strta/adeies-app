@@ -126,6 +126,7 @@ async function editDay(iso) {
   const e = state.days[iso] || {};
   const hn = holidayName(iso);
   const list = kinds();
+  const blk = e.k && e.k !== HOLIDAY ? blockAround(state.days, iso, e.k) : null;
   const chip = (code, name, color) => `<label class="chip" style="--c:${color}">
       <input type="radio" name="k" value="${esc(code)}" ${(e.k || "") === code ? "checked" : ""}>${esc(name)}</label>`;
   const { action, data } = await dialog(`
@@ -141,7 +142,9 @@ async function editDay(iso) {
     </div>
     <label>Σημείωση</label>
     <input name="n" value="${esc(e.n || "")}" placeholder="π.χ. αρ. πρωτοκόλλου">
-    <label>Ίδιο είδος έως και (προαιρετικά — μόνο εργάσιμες Δευ–Παρ)</label>
+    ${blk && blk.days > 1 ? `<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" name="whole" style="width:auto">
+      Όλο το διάστημα ${dmy(blk.from).slice(0, 5)}–${dmy(blk.to).slice(0, 5)} (${blk.days} ημέρες ${esc(e.k)})</label>` : ""}
+    <label>Έως και (προαιρετικά — για καταχώρηση, αλλαγή ή διαγραφή πολλών ημερών· μόνο εργάσιμες)</label>
     <input type="date" name="to" min="${iso}">
     <div class="dlg-actions">
       ${e.k || e.o || e.n ? `<button class="btn danger" value="delete" formnovalidate>Διαγραφή</button>` : ""}
@@ -167,7 +170,31 @@ async function editDay(iso) {
     o.addEventListener("input", () => form.querySelectorAll("[name=op]").forEach((r) => { r.checked = Number(r.value) === Number(o.value || 0); }));
   });
   try {
-    if (action === "delete") { await setDay(iso, null); toast("Διαγράφηκε"); return; }
+    // Διάστημα: «όλο το διάστημα» ή «έως και»
+    const range = data.whole && blk ? [blk.from, blk.to] : data.to && data.to > iso ? [iso, data.to] : null;
+    const isWork = (d) => { const wd = weekday(d); return wd !== 0 && wd !== 6 && !holidayName(d) && state.days[d]?.k !== HOLIDAY; };
+    /** Αφαιρεί το παλιό είδος από τις ημέρες του διαστήματος (κρατά υπερωρίες/σημειώσεις) */
+    const clearRange = async (wholeEntryOn) => {
+      const changes = {};
+      for (const d of eachDay(range[0], range[1])) {
+        const cur = state.days[d];
+        if (!cur || (e.k ? cur.k !== e.k : !cur.k) || cur.k === HOLIDAY) continue;
+        if (d === wholeEntryOn) { changes[d] = null; continue; }
+        const { k, ...rest } = cur;
+        changes[d] = Object.keys(rest).length ? rest : null;
+      }
+      if (wholeEntryOn) changes[wholeEntryOn] = null;
+      await setDays(changes);
+      return Object.keys(changes).length;
+    };
+    if (action === "delete") {
+      if (range) {
+        if (!(await confirmDlg(`Διαγραφή ${e.k ? `«${esc(kindName(e.k))}»` : "όλων των ειδών"} από ${dmy(range[0])} έως ${dmy(range[1])};`, "Διαγραφή", true))) return;
+        const n = await clearRange(iso); toast(`Διαγράφηκαν ${n} ημέρες`);
+      }
+      else { await setDay(iso, null); toast("Διαγράφηκε"); }
+      return;
+    }
     if (action !== "save" && action !== "doc") return;
     const entry = { k: data.k || "", o: Number(data.o) || 0, n: (data.n || "").trim() };
     const lim = Number(settings().shortLeaveLimit) || 0;
@@ -176,11 +203,17 @@ async function editDay(iso) {
       const r = shortLeave(state.days, kinds(), yy, mm, lim, { [iso]: entry.k });
       if (r.over && !(await confirmDlg(`Ο ${MONTHS[mm - 1]} θα έχει ${r.used} ώρες δίωρης/μονόωρης (όριο ${lim}). Αποθήκευση παρ' όλα αυτά;`, "Αποθήκευση", true))) return;
     }
-    if (data.to && data.to > iso && entry.k) {
+    if (range && !entry.k) {
+      // «Καμία» σε διάστημα = αφαίρεση του είδους από όλες τις ημέρες
+      await clearRange(null);
+      await setDay(iso, entry);
+      toast("Αφαιρέθηκε το είδος από το διάστημα");
+    } else if (range && entry.k) {
       const changes = { [iso]: entry };
-      for (const d of eachDay(iso, data.to)) {
-        const wd = weekday(d);
-        if (d === iso || wd === 0 || wd === 6 || holidayName(d) || state.days[d]?.k === HOLIDAY) continue;
+      for (const d of eachDay(range[0], range[1])) {
+        if (d === iso || !isWork(d)) continue;
+        // στο «όλο το διάστημα» αλλάζουν μόνο οι ημέρες του ίδιου παλιού είδους
+        if (data.whole && state.days[d]?.k !== e.k) continue;
         changes[d] = { ...(state.days[d] || {}), k: entry.k };
       }
       await setDays(changes);
