@@ -10,7 +10,6 @@
  * και παίρνει αμέσως ένα πρώτο αντίγραφο.
  */
 const PROJECT_ID = "adeies-stratos";
-const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες» στο Drive του stratos.tampakis@gmail.com
 const FOLDER_NAME = "Άδειες";
 const FILE_NAME = "adeies-backup.json";               // ένα αρχείο, αντικαθίσταται κάθε φορά
 
@@ -55,10 +54,8 @@ function backup() {
   Logger.log("Ενημερώθηκε το %s (%s ημέρες, %s KB)", FILE_NAME, Object.keys(days).length, Math.round(json.length / 1024));
 }
 
-/** Ο φάκελος «Άδειες»: πρώτα με το ID, μετά με το όνομα, αλλιώς τον δημιουργεί */
+/** Ο φάκελος «Άδειες» στο Drive του λογαριασμού που τρέχει το script (τον δημιουργεί αν δεν υπάρχει) */
 function backupFolder() {
-  Logger.log("Λογαριασμός Google: %s", Session.getEffectiveUser().getEmail());
-  try { return DriveApp.getFolderById(FOLDER_ID); } catch (e) { /* άλλος λογαριασμός ή δεν υπάρχει πρόσβαση */ }
   const it = DriveApp.getFoldersByName(FOLDER_NAME);
   if (it.hasNext()) return it.next();
   Logger.log("Δεν βρέθηκε φάκελος «%s» — δημιουργείται.", FOLDER_NAME);
