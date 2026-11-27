@@ -1,0 +1,99 @@
+/**
+ * Εβδομαδιαίο αντίγραφο ασφαλείας της εφαρμογής «Άδειες & Υπερωρίες» στο Google Drive.
+ *
+ * Τρέχει στον λογαριασμό Google του ιδιοκτήτη (script.google.com), διαβάζει το Firestore
+ * με τα δικά του δικαιώματα και γράφει ένα JSON στον φάκελο «Άδειες».
+ * Η μορφή είναι ίδια με το «Αντίγραφο ασφαλείας» της εφαρμογής, άρα γίνεται επαναφορά από
+ * Ρυθμίσεις → Εισαγωγή ιστορικού.
+ *
+ * Εγκατάσταση: τρέξε μία φορά τη setup() — φτιάχνει το χρονοδιάγραμμα (κάθε Δευτέρα 03:00–04:00)
+ * και παίρνει αμέσως ένα πρώτο αντίγραφο.
+ */
+const PROJECT_ID = "adeies-stratos";
+const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες»
+const KEEP = 26;                                      // πόσα αντίγραφα κρατάμε (~6 μήνες)
+const PREFIX = "adeies-backup-";
+
+function setup() {
+  ScriptApp.getProjectTriggers()
+    .filter((t) => t.getHandlerFunction() === "backup")
+    .forEach((t) => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("backup").timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(3).inTimezone("Europe/Athens").create();
+  backup();
+  Logger.log("Έτοιμο: αντίγραφο κάθε Δευτέρα 03:00–04:00 (ώρα Ελλάδας).");
+}
+
+function backup() {
+  const col = (name) => listCollection(name);
+  const config = Object.fromEntries(col("config").map((d) => [d.id, d.data]));
+  const days = {};
+  col("years").forEach((d) => Object.assign(days, d.data.days || {}));
+  const ots = col("ots").filter((d) => d.id !== "meta").flatMap((d) => d.data.rows || []);
+  const strip = (d) => d.data;
+
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    source: "drive-backup",
+    settings: config.settings || {},
+    kinds: (config.kinds && config.kinds.list) || [],
+    profile: config.profile || {},
+    signature: config.signature && config.signature.b64 ? config.signature : null,
+    repo: col("repo").map(strip),
+    blood: col("blood").map(strip),
+    days: days,
+    ots: ots,
+  };
+  if (!Object.keys(days).length) throw new Error("Το Firestore επέστρεψε 0 ημέρες — δεν γράφτηκε αντίγραφο.");
+
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const stamp = Utilities.formatDate(new Date(), "Europe/Athens", "yyyy-MM-dd_HHmm");
+  const file = folder.createFile(PREFIX + stamp + ".json", JSON.stringify(data, null, 1), "application/json");
+  Logger.log("Γράφτηκε %s (%s ημέρες, %s KB)", file.getName(), Object.keys(days).length, Math.round(file.getSize() / 1024));
+  prune(folder);
+}
+
+/** Κρατά τα τελευταία KEEP αντίγραφα, τα παλαιότερα πάνε στον κάδο */
+function prune(folder) {
+  const files = [];
+  const it = folder.searchFiles("title contains '" + PREFIX + "' and trashed = false");
+  while (it.hasNext()) files.push(it.next());
+  files.sort((a, b) => b.getName().localeCompare(a.getName()));
+  files.slice(KEEP).forEach((f) => f.setTrashed(true));
+}
+
+// ---------------- Firestore REST ----------------
+function listCollection(name) {
+  const base = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents/" + name;
+  const out = [];
+  let token = "";
+  do {
+    const url = base + "?pageSize=300" + (token ? "&pageToken=" + encodeURIComponent(token) : "");
+    const res = UrlFetchApp.fetch(url, { headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error("Firestore " + name + ": " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
+    const body = JSON.parse(res.getContentText());
+    (body.documents || []).forEach((d) => out.push({ id: d.name.split("/").pop(), data: fields(d.fields || {}) }));
+    token = body.nextPageToken || "";
+  } while (token);
+  return out;
+}
+function fields(f) {
+  const o = {};
+  Object.keys(f).forEach((k) => { o[k] = value(f[k]); });
+  return o;
+}
+function value(v) {
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("nullValue" in v) return null;
+  if ("timestampValue" in v) return v.timestampValue;
+  if ("mapValue" in v) return fields(v.mapValue.fields || {});
+  if ("arrayValue" in v) return (v.arrayValue.values || []).map(value);
+  if ("referenceValue" in v) return v.referenceValue;
+  if ("bytesValue" in v) return v.bytesValue;
+  if ("geoPointValue" in v) return v.geoPointValue;
+  return null;
+}
