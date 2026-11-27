@@ -5,7 +5,7 @@ import {
 } from "./store.js";
 import {
   MONTHS, WEEKDAYS, isoOf, parts, daysInMonth, weekday, dmy, todayIso, eachDay, greekHolidays, holidayName,
-  kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround,
+  kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround, shortLeave, shortHoursOf,
 } from "./logic.js";
 import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES } from "./docgen.js";
 import { DEFAULT_KINDS, DEFAULT_SETTINGS } from "./defaults.js";
@@ -64,6 +64,8 @@ export function renderMonth(el) {
   const s = monthStats(state.days, kinds(), y, m);
   const ot = overtimeRows(state.days, y, m, settings());
   const used = Object.entries(s.counts).filter(([k]) => k !== HOLIDAY);
+  const limit = Number(settings().shortLeaveLimit) || 0;
+  const sl = shortLeave(state.days, kinds(), y, m, limit);
 
   el.innerHTML = `${noKindsNotice()}
     <div class="month-nav">
@@ -86,6 +88,8 @@ export function renderMonth(el) {
       <div class="kpi"><div class="v">${ot.totalHol}</div><div class="l">Ώρες υπερωρίας (αργίες)</div></div>
       <div class="kpi"><div class="v">${s.absences}</div><div class="l">Απουσίες</div></div>
       <div class="kpi"><div class="v">${s.work}<span class="muted"> / ${s.workdays - s.holidays}</span></div><div class="l">Ημέρες εργασίας / εργάσιμες</div></div>
+      ${limit ? `<div class="kpi"${sl.over ? ' style="outline:2px solid var(--danger)"' : ""}><div class="v ${sl.over ? "down" : ""}">${sl.used}<span class="muted"> / ${limit}</span></div>
+        <div class="l">Ώρες δίωρης/μονόωρης (υπόλοιπο ${Math.max(0, sl.remaining)})</div></div>` : ""}
     </div>
     ${used.length ? `<div class="legend">${used.map(([k, v]) => `<span><i style="background:${kindColor(k)}"></i>${esc(kindName(k))}: <b>${v}</b></span>`).join("")}</div>` : ""}
 
@@ -127,6 +131,7 @@ async function editDay(iso) {
     ${hn ? `<div class="muted" style="color:var(--danger)">${esc(hn)}</div>` : ""}
     <label>Είδος</label>
     <div class="kind-chips">${chip("", "— Καμία", "#888")}${list.map((k) => chip(k.code, k.name, k.color)).join("")}</div>
+    <div class="muted" id="slInfo" style="margin-top:6px"></div>
     <label>Υπερωρία (ώρες)</label>
     <div class="kind-chips">${OT_PRESETS.map((h) => `<label class="chip" style="--c:var(--accent-bg)">
       <input type="radio" name="op" value="${h}" ${(Number(e.o) || 0) === h ? "checked" : ""}>${h || "—"}</label>`).join("")}
@@ -142,6 +147,19 @@ async function editDay(iso) {
       <button class="btn" value="doc" title="Αποθήκευση και αίτηση σε Word">📄 Αίτηση</button>
       <button class="btn primary" value="save">Αποθήκευση</button>
     </div>`, (form) => {
+    const info = form.querySelector("#slInfo");
+    const lim = Number(settings().shortLeaveLimit) || 0;
+    const showSl = () => {
+      const code = form.querySelector("[name=k]:checked")?.value || "";
+      const h = shortHoursOf(km()[code] || { code });
+      if (!lim || !h) { info.textContent = ""; return; }
+      const [yy, mm] = parts(iso);
+      const r = shortLeave(state.days, kinds(), yy, mm, lim, { [iso]: code });
+      info.innerHTML = `${MONTHS[mm - 1]}: <b>${r.used} από ${lim}</b> ώρες δίωρης/μονόωρης` +
+        (r.over ? ` — <b style="color:var(--danger)">πάνω από το όριο</b>` : ` (μένουν ${r.remaining})`);
+    };
+    form.querySelectorAll("[name=k]").forEach((r) => r.addEventListener("change", showSl));
+    showSl();
     const o = form.querySelector("[name=o]");
     form.querySelectorAll("[name=op]").forEach((r) => r.addEventListener("change", () => { o.value = r.value === "0" ? "" : r.value; }));
     o.addEventListener("input", () => form.querySelectorAll("[name=op]").forEach((r) => { r.checked = Number(r.value) === Number(o.value || 0); }));
@@ -150,6 +168,12 @@ async function editDay(iso) {
     if (action === "delete") { await setDay(iso, null); toast("Διαγράφηκε"); return; }
     if (action !== "save" && action !== "doc") return;
     const entry = { k: data.k || "", o: Number(data.o) || 0, n: (data.n || "").trim() };
+    const lim = Number(settings().shortLeaveLimit) || 0;
+    if (lim && entry.k && shortHoursOf(km()[entry.k] || { code: entry.k })) {
+      const [yy, mm] = parts(iso);
+      const r = shortLeave(state.days, kinds(), yy, mm, lim, { [iso]: entry.k });
+      if (r.over && !(await confirmDlg(`Ο ${MONTHS[mm - 1]} θα έχει ${r.used} ώρες δίωρης/μονόωρης (όριο ${lim}). Αποθήκευση παρ' όλα αυτά;`, "Αποθήκευση", true))) return;
+    }
     if (data.to && data.to > iso && entry.k) {
       const changes = { [iso]: entry };
       for (const d of eachDay(iso, data.to)) {
@@ -456,12 +480,13 @@ export function renderSettings(el) {
       <div><label>Υπόλοιπο κανονικής στην έναρξη</label><input type="number" name="leaveCarry" value="${esc(s.leaveCarry)}"></div>
       <div><label>Έναρξη υπερωρίας καθημερινής</label><input type="time" name="otWorkStart" value="${esc(s.otWorkStart)}"></div>
       <div><label>Έναρξη υπερωρίας Σαββάτου/αργίας</label><input type="time" name="otHolStart" value="${esc(s.otHolStart)}"></div>
+      <div><label>Όριο δίωρης/μονόωρης (ώρες/μήνα, 0 = χωρίς)</label><input type="number" name="shortLeaveLimit" min="0" value="${esc(s.shortLeaveLimit)}"></div>
       <div style="grid-column:1/-1;margin-top:10px"><button class="btn primary">Αποθήκευση</button></div>
     </form></div>
 
     <h2>Είδη αδειών</h2>
     <div class="card scroll-x"><table class="t kinds-table">
-      <thead><tr><th></th><th>Κωδ.</th><th>Όνομα</th><th>Δικ./έτος</th><th>Υπόλοιπο</th><th>Απουσία</th><th>Περιγραφές OTS (μία ανά γραμμή)</th><th></th></tr></thead>
+      <thead><tr><th></th><th>Κωδ.</th><th>Όνομα</th><th>Δικ./έτος</th><th title="Ώρες που μετρούν στο μηνιαίο όριο δίωρης/μονόωρης">Ώρες ορίου</th><th>Υπόλοιπο</th><th>Απουσία</th><th>Περιγραφές OTS (μία ανά γραμμή)</th><th></th></tr></thead>
       <tbody id="kbody">${list.map((k, i) => kindRow(k, i)).join("")}</tbody>
     </table>
     <div class="row wrap" style="margin-top:10px"><button class="btn" id="kadd">+ Είδος</button><button class="btn primary" id="ksave">Αποθήκευση ειδών</button></div></div>
@@ -499,7 +524,7 @@ export function renderSettings(el) {
   el.querySelector("#gen").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const d = Object.fromEntries(new FormData(ev.target).entries());
-    await saveSettings({ ...d, leaveStartYear: Number(d.leaveStartYear), leaveCarry: Number(d.leaveCarry) });
+    await saveSettings({ ...d, leaveStartYear: Number(d.leaveStartYear), leaveCarry: Number(d.leaveCarry), shortLeaveLimit: Number(d.shortLeaveLimit) || 0 });
     toast("Αποθηκεύτηκε");
   });
   const kbody = el.querySelector("#kbody");
@@ -512,6 +537,7 @@ export function renderSettings(el) {
       const v = (n) => tr.querySelector(`[name=${n}]`);
       return {
         code: v("code").value.trim().toUpperCase(), name: v("name").value.trim(), rights: Number(v("rights").value) || 0,
+        monthHours: Number(v("monthHours").value) || 0,
         balance: v("balance").value, absence: v("absence").checked, color: v("color").value,
         ots: v("ots").value.split("\n").map((s) => s.trim()).filter(Boolean), order: i,
       };
@@ -548,6 +574,7 @@ function kindRow(k, i) {
     <td><input name="code" value="${esc(k.code)}" style="width:80px"></td>
     <td><input name="name" value="${esc(k.name)}" style="min-width:130px"></td>
     <td><input type="number" name="rights" value="${k.rights || 0}" min="0"></td>
+    <td><input type="number" name="monthHours" value="${shortHoursOf(k)}" min="0"></td>
     <td><select name="balance">${BAL_OPTS.map(([v, l]) => `<option value="${v}" ${k.balance === v ? "selected" : ""}>${l}</option>`).join("")}</select></td>
     <td style="text-align:center"><input type="checkbox" name="absence" ${k.absence !== false ? "checked" : ""} style="width:auto"></td>
     <td><textarea name="ots" rows="${Math.max(1, (k.ots || []).length)}" style="min-width:220px">${esc((k.ots || []).join("\n"))}</textarea></td>

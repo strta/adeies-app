@@ -60,7 +60,7 @@ def main(path):
         rights = int(rights) if isinstance(rights, (int, float)) else 0
         bal = BALANCE.get(code, "annual" if rights else "none")
         kinds.append({
-            "code": code, "name": NAMES.get(code, name.strip()), "rights": rights, "balance": bal,
+            "code": code, "name": NAMES.get(code, name.strip()), "rights": rights, "monthHours": {"ΔΙΩ": 2, "ΜΟΝ": 1}.get(code, 0), "balance": bal,
             "ots": [ots] + EXTRA_OTS.get(code, []) if ots else EXTRA_OTS.get(code, []),
             "absence": code not in NO_ABSENCE and code != "ΑΡΓ",
             "color": COLORS.get(code, "#607d8b"), "order": order,
@@ -108,7 +108,7 @@ def main(path):
     out = {
         "version": 1,
         "source": os.path.basename(path),
-        "settings": {"leaveStartYear": 2022, "leaveCarry": 43},
+        "settings": {"leaveStartYear": 2022, "leaveCarry": 43, "shortLeaveLimit": 4},
         "kinds": kinds, "repo": repo, "blood": blood, "days": days, "ots": ots,
     }
     os.makedirs("data", exist_ok=True)

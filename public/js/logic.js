@@ -274,3 +274,25 @@ export function blockAround(days, iso, code) {
   for (const d of eachDay(from, to)) if (days[d]?.k === code) n++;
   return { from, to, days: n };
 }
+
+// ---------- Όριο δίωρων/μονόωρων ανά μήνα ----------
+/** Ώρες που «τρώει» κάθε είδος από το μηνιαίο όριο (αν δεν έχει οριστεί στις Ρυθμίσεις) */
+export const SHORT_HOURS = { ΔΙΩ: 2, ΜΟΝ: 1 };
+export const shortHoursOf = (k) => (k?.monthHours !== undefined && k?.monthHours !== null && k?.monthHours !== ""
+  ? Number(k.monthHours) || 0 : SHORT_HOURS[k?.code] || 0);
+/**
+ * Χρήση του μηνιαίου ορίου (π.χ. 4 ώρες = 2 δίωρες ή 4 μονόωρες ή συνδυασμός).
+ * extra: { iso: code } για έλεγχο πριν την αποθήκευση (αντικαθιστά την τιμή της μέρας).
+ */
+export function shortLeave(days, kinds, y, m, limit = 4, extra = {}) {
+  const km = kindMap(kinds);
+  const items = [];
+  for (let d = 1; d <= daysInMonth(y, m); d++) {
+    const iso = isoOf(y, m, d);
+    const code = iso in extra ? extra[iso] : days[iso]?.k;
+    const h = code ? shortHoursOf(km[code] || { code }) : 0;
+    if (h) items.push({ iso, code, hours: h });
+  }
+  const used = items.reduce((a, x) => a + x.hours, 0);
+  return { used, limit, remaining: limit - used, over: limit > 0 && used > limit, items };
+}

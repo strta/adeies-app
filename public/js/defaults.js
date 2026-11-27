@@ -224,4 +224,4 @@ export const DEFAULT_KINDS = [
  }
 ];
 
-export const DEFAULT_SETTINGS = { leaveStartYear: 2022, leaveCarry: 43, otWorkStart: "15:00", otHolStart: "07:00" };
+export const DEFAULT_SETTINGS = { leaveStartYear: 2022, leaveCarry: 43, otWorkStart: "15:00", otHolStart: "07:00", shortLeaveLimit: 4 };

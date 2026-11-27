@@ -72,3 +72,12 @@ t("Διάστημα άδειας γύρω από μια μέρα", () => {
   assert.deepEqual(L.blockAround(days, "2026-12-11", "ΑΔΕ"), { from: "2026-12-10", to: "2026-12-14", days: 3 });
 });
 console.log(`\n${n} έλεγχοι πέρασαν`);
+t("Όριο δίωρων/μονόωρων 4 ώρες/μήνα", () => {
+  const kinds = [{ code: "ΔΙΩ" }, { code: "ΜΟΝ" }, { code: "ΥΠΔΙΩ" }];
+  const days = { "2026-11-11": { k: "ΔΙΩ" }, "2026-11-12": { k: "ΜΟΝ" }, "2026-11-13": { k: "ΥΠΔΙΩ" } };
+  const s = L.shortLeave(days, kinds, 2026, 11, 4);
+  assert.equal(s.used, 3); assert.equal(s.remaining, 1); assert.equal(s.over, false);
+  assert.equal(L.shortLeave(days, kinds, 2026, 11, 4, { "2026-11-20": "ΔΙΩ" }).over, true);
+  assert.equal(L.shortLeave(days, kinds, 2026, 11, 4, { "2026-11-20": "ΜΟΝ" }).over, false);
+});
+console.log(`\n${n} έλεγχοι πέρασαν`);
