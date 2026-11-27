@@ -225,3 +225,13 @@ export const DEFAULT_KINDS = [
 ];
 
 export const DEFAULT_SETTINGS = { leaveStartYear: 2022, leaveCarry: 43, otWorkStart: "15:00", otHolStart: "07:00", shortLeaveLimit: 4 };
+
+/** Προσωπικά στοιχεία που μπαίνουν στα έγγραφα. Αποθηκεύονται μόνο στο Firestore (config/profile). */
+export const PROFILE_FIELDS = [
+  ["lastName", "Επώνυμο"], ["firstName", "Όνομα"], ["fatherName", "Πατρώνυμο"],
+  ["fullName", "Ονοματεπώνυμο (πεζά, για το σημείωμα)"], ["fullNameCaps", "Ονοματεπώνυμο (κεφαλαία, κάτω από την υπογραφή)"],
+  ["specialty", "Κλάδος"], ["specialtyShort", "Κλάδος σύντομα (αίτηση δίωρης)"], ["kladosText", "Κλάδος (πεζά, για το σημείωμα)"],
+  ["direction", "Διεύθυνση υπηρεσίας"], ["department", "Τμήμα"],
+  ["address", "Διεύθυνση κατοικίας"], ["city", "Πόλη"], ["postcode", "Τ.Κ."], ["prefecture", "Νομός"], ["phone", "Τηλέφωνο"],
+  ["signer1", "Σημείωμα: όνομα 1ου υπογράφοντα (Τμήμα)"], ["signer2", "Σημείωμα: όνομα 2ου υπογράφοντα (Διεύθυνση)"],
+];

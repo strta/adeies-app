@@ -49,3 +49,5 @@ tests/                node tests/logic.test.mjs
 tools/                μετατροπή του Excel σε history.json
 ```
 Firestore: `years/{έτος}` {days: {"2026-11-25": {k, o, n}}}, `config/kinds|settings|template`, `repo`, `blood`, `ots/{έτος}`, `ots/meta`.
+
+Προσωπικά στοιχεία (ονοματεπώνυμο, διεύθυνση, τηλέφωνο, υπογράφοντες) και υπογραφή **δεν** υπάρχουν στα δημόσια πρότυπα· τα πρότυπα έχουν πεδία `{{p_…}}` / `{{signature}}` που συμπληρώνονται από το `config/profile` και `config/signature` (μόνο ο ιδιοκτήτης έχει πρόσβαση).

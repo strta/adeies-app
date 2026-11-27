@@ -1,6 +1,6 @@
 // Οθόνες της εφαρμογής.
 import {
-  state, setDay, setDays, saveKinds, saveSettings, saveTemplate, saveSignature, saveRepo, deleteRepo, saveBlood, deleteBlood,
+  state, setDay, setDays, saveKinds, saveSettings, saveTemplate, saveSignature, saveProfile, saveRepo, deleteRepo, saveBlood, deleteBlood,
   importOts, importHistory, backupData, logout, DEMO,
 } from "./store.js";
 import {
@@ -8,7 +8,7 @@ import {
   kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround, shortLeave, shortHoursOf,
 } from "./logic.js";
 import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES, prepareSignature } from "./docgen.js";
-import { DEFAULT_KINDS, DEFAULT_SETTINGS } from "./defaults.js";
+import { DEFAULT_KINDS, DEFAULT_SETTINGS, PROFILE_FIELDS } from "./defaults.js";
 import { esc, toast, dialog, confirmDlg } from "./ui.js";
 import { OWNER_EMAIL } from "./config.js";
 
@@ -113,7 +113,7 @@ export function renderMonth(el) {
   el.querySelector("[data-doc]")?.addEventListener("click", async (ev) => {
     ev.target.disabled = true;
     try {
-      const { blob, name } = await buildOvertimeDoc({ days: state.days, settings: settings(), template: state.template, signature: autoSig() }, y, m);
+      const { blob, name } = await buildOvertimeDoc({ days: state.days, settings: settings(), template: state.template, signature: autoSig(), profile: state.profile }, y, m);
       download(blob, name);
       toast("Κατέβηκε: " + name);
     } catch (e) { console.error(e); toast("Σφάλμα: " + e.message, 5000); }
@@ -252,6 +252,7 @@ async function applicationDialog(iso, code) {
     name = `Αίτηση αναρρωτικής ${dmy(data.from).replace(/\//g, "-")}.docx`;
   }
   opts.signature = data.sign ? state.signature : null;
+  opts.profile = state.profile;
   const blob = await buildForm(form, v, opts);
   download(blob, name);
   toast("Κατέβηκε: " + name);
@@ -542,6 +543,14 @@ export function renderSettings(el) {
     </table>
     <div class="row wrap" style="margin-top:10px"><button class="btn" id="kadd">+ Είδος</button><button class="btn primary" id="ksave">Αποθήκευση ειδών</button></div></div>
 
+    <h2>Στοιχεία εγγράφων</h2>
+    <div class="card">
+      <p class="muted" style="margin-top:0">Μπαίνουν στις αιτήσεις και στο σημείωμα. Αποθηκεύονται μόνο στον λογαριασμό σου (όχι στα δημόσια πρότυπα).
+        ${PROFILE_FIELDS.some(([k]) => !state.profile[k]) ? `<b style="color:var(--danger)">Λείπουν στοιχεία — στα έγγραφα θα βγαίνουν «……».</b>` : ""}</p>
+      <form id="prof" class="grid2">${PROFILE_FIELDS.map(([k, l]) => `<div><label>${esc(l)}</label><input name="${k}" value="${esc(state.profile[k] || "")}"></div>`).join("")}
+        <div style="grid-column:1/-1;margin-top:10px"><button class="btn primary">Αποθήκευση στοιχείων</button></div></form>
+    </div>
+
     <h2>Υπογραφή</h2>
     <div class="card">
       ${state.signature ? `<div style="background:#fff;border-radius:8px;padding:8px;display:inline-block"><img src="data:image/png;base64,${state.signature.b64}" alt="Υπογραφή" style="height:70px"></div>` : `<div class="muted">Δεν έχει οριστεί υπογραφή.</div>`}
@@ -570,7 +579,9 @@ export function renderSettings(el) {
     try {
       const h = JSON.parse(await f.text());
       const n = Object.keys(h.days || {}).length;
-      if (!(await confirmDlg(`Εισαγωγή ${n} ημερών, ${(h.kinds || []).length} ειδών, ${(h.repo || []).length} ρεπό, ${(h.ots || []).length} εγγραφών OTS; Οι ίδιες ημέρες θα αντικατασταθούν.`, "Εισαγωγή"))) return;
+      const msg = n || h.kinds?.length ? `Εισαγωγή ${n} ημερών, ${(h.kinds || []).length} ειδών, ${(h.repo || []).length} ρεπό, ${(h.ots || []).length} εγγραφών OTS${h.profile ? ", προσωπικών στοιχείων" : ""}; Οι ίδιες ημέρες θα αντικατασταθούν.`
+        : h.profile ? "Εισαγωγή προσωπικών στοιχείων για τα έγγραφα;" : "Το αρχείο δεν έχει δεδομένα.";
+      if (!(await confirmDlg(msg, "Εισαγωγή"))) return;
       toast("Εισαγωγή…", 10000);
       await importHistory(h);
       toast("Ολοκληρώθηκε η εισαγωγή");
@@ -627,6 +638,12 @@ export function renderSettings(el) {
       toast("Αποθηκεύτηκε το πρότυπο");
     } catch (e) { toast("Σφάλμα: " + e.message, 6000); }
     ev.target.value = "";
+  });
+  el.querySelector("#prof").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const d = Object.fromEntries([...new FormData(ev.target).entries()].map(([k, v]) => [k, String(v).trim()]));
+    await saveProfile(d);
+    toast("Αποθηκεύτηκαν τα στοιχεία");
   });
   el.querySelector("#sigPut").addEventListener("change", async (ev) => {
     const f = ev.target.files[0]; if (!f) return;

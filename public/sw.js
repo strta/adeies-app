@@ -1,5 +1,5 @@
 // Service worker: η εφαρμογή ανοίγει και χωρίς σύνδεση (τα δεδομένα τα κρατά το Firestore cache).
-const CACHE = "adeies-v6";
+const CACHE = "adeies-v7";
 const SHELL = ["/", "/index.html", "/css/app.css", "/js/app.js", "/js/store.js", "/js/views.js", "/js/ui.js", "/js/logic.js",
   "/js/docgen.js", "/js/defaults.js", "/js/config.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png",
   "/templates/ypereories.docx", "/templates/aitisi-adeias.docx", "/templates/aitisi-diwris.docx",

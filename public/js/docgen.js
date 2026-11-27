@@ -75,7 +75,7 @@ async function applySignature(zip, doc, sig) {
 }
 
 /** Φτιάχνει το .docx για τον μήνα και επιστρέφει { blob, name, rows } */
-export async function buildOvertimeDoc({ days, settings, template, signature }, y, m) {
+export async function buildOvertimeDoc({ days, settings, template, signature, profile }, y, m) {
   const rows = overtimeRows(days, y, m, settings);
   const Zip = await JSZip();
   const zip = await Zip.loadAsync(await templateBytes(template));
@@ -83,7 +83,7 @@ export async function buildOvertimeDoc({ days, settings, template, signature }, 
   const values = {
     curMonth: MONTHS_ACC[m - 1], curYear: String(y),
     NumHours: String(rows.totalWork), WordHours: greekWords(rows.totalWork),
-    NumHoursArgia: String(rows.totalHol), WordHoursArgia: greekWords(rows.totalHol),
+    NumHoursArgia: String(rows.totalHol), WordHoursArgia: greekWords(rows.totalHol), ...profileValues(profile),
   };
   for (const [k, v] of Object.entries(values)) doc = doc.split(`{{${k}}}`).join(x(v));
   // Οι πίνακες αντικαθιστούν ολόκληρη την παράγραφο που έχει το {{tblHours}} / {{tblHoursArgia}}
@@ -97,7 +97,7 @@ export async function buildOvertimeDoc({ days, settings, template, signature }, 
   }
   doc = await applySignature(zip, doc, signature);
   const left = doc.match(/\{\{\w+\}\}/g);
-  if (left) console.warn("Πεδία χωρίς τιμή στο πρότυπο:", left);
+  if (left) { console.warn("Πεδία χωρίς τιμή στο πρότυπο:", left); doc = doc.replace(/\{\{\w+\}\}/g, "……"); }
   zip.file("word/document.xml", doc);
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
   return { blob, name: `Υπερωρίες ${MONTHS_ACC[m - 1]} ${y}.docx`, rows };
@@ -132,6 +132,9 @@ export function formFor(code) {
   return KIND_FORM[code] || ["adeia", "Άλλη"];
 }
 
+/** Προσωπικά στοιχεία → πεδία {{p_…}} των προτύπων */
+export const profileValues = (p = {}) => Object.fromEntries(Object.entries(p).map(([k, v]) => [`p_${k}`, v ?? ""]));
+
 /** Τσεκάρει τα κουτιά (FORMCHECKBOX) των παραγράφων που το κείμενό τους είναι μία από τις ετικέτες */
 function checkBoxes(doc, labels) {
   const want = new Set(labels.map((l) => l.trim()));
@@ -145,7 +148,7 @@ function checkBoxes(doc, labels) {
 
 /**
  * values: { today, from, to, days, date, hours, fromTime, toTime, sickText, ... }
- * opts: { check: [ετικέτες], dropParaWith: [κείμενο], signature: {b64,w,h} | null }
+ * opts: { check: [ετικέτες], dropParaWith: [κείμενο], signature: {b64,w,h} | null, profile: {...} }
  */
 export async function buildForm(kind, values, opts = {}) {
   const f = FORMS[kind];
@@ -158,7 +161,7 @@ export async function buildForm(kind, values, opts = {}) {
   for (const t of opts.dropParaWith || []) {
     doc = doc.replace(new RegExp(`<w:p\\b(?:(?!<w:p\\b).)*?${t.replace(/[{}]/g, "\\$&")}.*?</w:p>`, "s"), "");
   }
-  for (const [k, v] of Object.entries(values)) doc = doc.split(`{{${k}}}`).join(x(v));
+  for (const [k, v] of Object.entries({ ...profileValues(opts.profile), ...values })) doc = doc.split(`{{${k}}}`).join(x(v));
   if (opts.check?.length) doc = checkBoxes(doc, opts.check);
   doc = await applySignature(zip, doc, opts.signature);
   const left = doc.match(/\{\{\w+\}\}/g);

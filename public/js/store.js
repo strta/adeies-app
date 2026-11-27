@@ -8,7 +8,7 @@ export const state = {
   user: null, ready: false,
   days: {},          // { "2026-11-25": { k, o, n } } — όλα τα έτη μαζί
   years: {},         // { 2026: {...} } ίδια δεδομένα ανά έτος (όπως αποθηκεύονται)
-  kinds: [], settings: {}, repo: [], blood: [], ots: [], otsMeta: null, template: null, signature: null,
+  kinds: [], settings: {}, repo: [], blood: [], ots: [], otsMeta: null, template: null, signature: null, profile: {},
 };
 
 const listeners = new Set();
@@ -54,6 +54,7 @@ async function firebaseBackend() {
       state.settings = m.settings || {};
       state.template = m.template || null;
       state.signature = m.signature?.b64 ? m.signature : null;
+      state.profile = m.profile || {};
       done("config");
     }, (e) => console.error("config", e)));
     unsubs.push(fs.onSnapshot(fs.collection(db, "repo"), (snap) => {
@@ -114,6 +115,7 @@ function demoBackend() {
     state.settings = db.config?.settings || {};
     state.template = db.config?.template || null;
     state.signature = db.config?.signature?.b64 ? db.config.signature : null;
+    state.profile = db.config?.profile || {};
     state.repo = Object.entries(db.repo || {}).map(([id, d]) => ({ id, ...d })).sort(byDate);
     state.blood = Object.entries(db.blood || {}).map(([id, d]) => ({ id, ...d })).sort(byDate);
     state.ots = Object.values(db.ots || {}).flat();
@@ -162,6 +164,7 @@ export const saveKinds = (list) => fb.putConfig("kinds", { list });
 export const saveSettings = (data) => fb.putConfig("settings", data, true);
 export const saveTemplate = (data) => fb.putConfig("template", data);
 export const saveSignature = (data) => fb.putConfig("signature", data);
+export const saveProfile = (data) => fb.putConfig("profile", data);
 export const saveRepo = (r) => fb.putItem("repo", r.id || newId(), { date: r.date, signer: r.signer || "", reason: r.reason || "", days: Number(r.days) || 0, kind: r.kind || "ΡΕΠ" });
 export const deleteRepo = (id) => fb.delItem("repo", id);
 export const saveBlood = (r) => fb.putItem("blood", r.id || newId(), { date: r.date, days: Number(r.days) || 0, note: r.note || "" });
@@ -179,6 +182,8 @@ export async function importOts(rows, fileName) {
 export async function importHistory(h) {
   if (h.kinds?.length) await saveKinds(h.kinds);
   if (h.settings) await saveSettings(h.settings);
+  if (h.profile) await saveProfile(h.profile);
+  if (h.signature?.b64) await saveSignature(h.signature);
   // σταθερά ids ώστε μια δεύτερη εισαγωγή να μη δημιουργεί διπλά
   for (const [i, r] of (h.repo || []).entries()) await saveRepo({ ...r, id: `h${i}-${r.date}` });
   for (const [i, r] of (h.blood || []).entries()) await saveBlood({ ...r, id: `h${i}-${r.date}` });
@@ -192,7 +197,7 @@ export async function importHistory(h) {
 /** Πλήρες αντίγραφο ασφαλείας (ίδια μορφή με το history.json) */
 export function backupData() {
   return {
-    version: 1, exportedAt: new Date().toISOString(), settings: state.settings, kinds: state.kinds,
+    version: 1, exportedAt: new Date().toISOString(), settings: state.settings, kinds: state.kinds, profile: state.profile, signature: state.signature,
     repo: state.repo.map(({ id, ...r }) => r), blood: state.blood.map(({ id, ...r }) => r), days: state.days, ots: state.ots,
   };
 }
