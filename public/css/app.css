@@ -19,7 +19,7 @@ h2 { font-size: 1rem; margin: 18px 0 8px; color: var(--muted); font-weight: 600;
 .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
 .topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--accent); color: #fff; }
+  gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--accent-bg); color: #fff; }
 .topbar h1 { font-size: 1.15rem; }
 #topActions { display: flex; gap: 6px; }
 #topActions .btn { background: rgba(255,255,255,.18); color: #fff; border: 0; }

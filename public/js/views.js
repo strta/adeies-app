@@ -287,7 +287,7 @@ export function renderOts(el) {
       <div class="muted">${meta ? `Τελευταία: ${esc(meta.file || "")} · ${meta.count} εγγραφές · ${new Date(meta.importedAt).toLocaleString("el-GR")}` : "Δεν έχει γίνει εισαγωγή ακόμα."}
         ${r.lastOts ? ` · πιο πρόσφατη άδεια στο OTS: <b>${dmy(r.lastOts)}</b>` : ""}</div>
       <p class="muted">Από το OTS κάνε εξαγωγή του ιστορικού αδειών σε Excel και διάλεξέ το εδώ. Αντικαθιστά τα έτη που περιέχει.</p>
-      <input type="file" id="otsFile" accept=".xlsx,.xls,.csv">
+      <input type="file" id="otsFile">
     </div>
 
     <div class="chips"><button class="chip ${!y ? "on" : ""}" data-oy="0">Όλα</button>${yearsRange().map((yy) =>
@@ -375,7 +375,7 @@ export function renderSettings(el) {
     <h2>Δεδομένα</h2>
     <div class="card">
       <label>Εισαγωγή ιστορικού (history.json από το Excel ή αντίγραφο ασφαλείας)</label>
-      <input type="file" id="histFile" accept=".json,application/json">
+      <input type="file" id="histFile">
       <div class="row wrap" style="margin-top:10px"><button class="btn" id="backup">⬇ Αντίγραφο ασφαλείας (JSON)</button></div>
     </div>
 
