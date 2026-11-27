@@ -42,6 +42,7 @@ const noKindsNotice = () => (state.kinds.length ? "" :
 // =====================================================================================
 // Ημερολόγιο μήνα
 // =====================================================================================
+let slideDir = 0;
 export function renderMonth(el) {
   const { y, m } = cur;
   const today = todayIso();
@@ -107,7 +108,21 @@ export function renderMonth(el) {
       </table></div>` : ""}
     </div>`;
 
-  el.querySelectorAll("[data-nav]").forEach((b) => b.addEventListener("click", () => { setCur(y, m + Number(b.dataset.nav)); renderMonth(el); }));
+  el.querySelectorAll("[data-nav]").forEach((b) => b.addEventListener("click", () => { slideDir = Number(b.dataset.nav); setCur(y, m + slideDir); renderMonth(el); }));
+  // Σάρωση αριστερά/δεξιά πάνω στο ημερολόγιο → επόμενος/προηγούμενος μήνας
+  const cal = el.querySelector(".cal");
+  if (slideDir) { cal.classList.add(slideDir > 0 ? "in-right" : "in-left"); slideDir = 0; }
+  let sx = 0, sy = 0, st = 0, swiped = false;
+  cal.addEventListener("touchstart", (ev) => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now(); swiped = false; }, { passive: true });
+  cal.addEventListener("touchend", (ev) => {
+    const t = ev.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - st > 800) return;
+    swiped = true;
+    slideDir = dx < 0 ? 1 : -1;
+    setCur(y, m + slideDir);
+    renderMonth(el);
+  }, { passive: true });
+  cal.addEventListener("click", (ev) => { if (swiped) { ev.stopPropagation(); ev.preventDefault(); swiped = false; } }, true);
   el.querySelector("[data-today]")?.addEventListener("click", () => { setCur(now[0], now[1]); renderMonth(el); });
   el.querySelectorAll("[data-day]").forEach((c) => c.addEventListener("click", () => editDay(c.dataset.day)));
   el.querySelector("[data-doc]")?.addEventListener("click", async (ev) => {

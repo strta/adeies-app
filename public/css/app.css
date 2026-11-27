@@ -175,3 +175,11 @@ table.t.stats th:first-child, table.t.stats td:first-child { z-index: 1; box-sha
 .scroll-y { overflow: auto; max-height: 45vh; overscroll-behavior: contain; }
 .scroll-y thead th { position: sticky; top: 0; background: var(--card); z-index: 2; }
 dialog .scroll-y table.t th:first-child, dialog .scroll-y table.t td:first-child { padding-left: 2px; }
+
+/* Αλλαγή μήνα με σάρωση */
+.cal { touch-action: pan-y; }
+.cal.in-right { animation: calInRight .18s ease-out; }
+.cal.in-left { animation: calInLeft .18s ease-out; }
+@keyframes calInRight { from { transform: translateX(40px); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes calInLeft { from { transform: translateX(-40px); opacity: .3; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cal.in-right, .cal.in-left { animation: none; } }
