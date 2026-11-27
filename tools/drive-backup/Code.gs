@@ -10,7 +10,8 @@
  * και παίρνει αμέσως ένα πρώτο αντίγραφο.
  */
 const PROJECT_ID = "adeies-stratos";
-const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες»
+const FOLDER_ID = "1az89jWXszVd9A-qRNl4GaAetmksWX8Zp"; // φάκελος «Άδειες» στο Drive του stratos.tampakis@gmail.com
+const FOLDER_NAME = "Άδειες";
 const FILE_NAME = "adeies-backup.json";               // ένα αρχείο, αντικαθίσταται κάθε φορά
 
 function setup() {
@@ -46,12 +47,22 @@ function backup() {
   };
   if (!Object.keys(days).length) throw new Error("Το Firestore επέστρεψε 0 ημέρες — δεν γράφτηκε αντίγραφο.");
 
-  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const folder = backupFolder();
   const json = JSON.stringify(data, null, 1);
   const it = folder.getFilesByName(FILE_NAME);
   const file = it.hasNext() ? it.next() : null;
   if (file) file.setContent(json); else folder.createFile(FILE_NAME, json, "application/json");
   Logger.log("Ενημερώθηκε το %s (%s ημέρες, %s KB)", FILE_NAME, Object.keys(days).length, Math.round(json.length / 1024));
+}
+
+/** Ο φάκελος «Άδειες»: πρώτα με το ID, μετά με το όνομα, αλλιώς τον δημιουργεί */
+function backupFolder() {
+  Logger.log("Λογαριασμός Google: %s", Session.getEffectiveUser().getEmail());
+  try { return DriveApp.getFolderById(FOLDER_ID); } catch (e) { /* άλλος λογαριασμός ή δεν υπάρχει πρόσβαση */ }
+  const it = DriveApp.getFoldersByName(FOLDER_NAME);
+  if (it.hasNext()) return it.next();
+  Logger.log("Δεν βρέθηκε φάκελος «%s» — δημιουργείται.", FOLDER_NAME);
+  return DriveApp.createFolder(FOLDER_NAME);
 }
 
 // ---------------- Σύνδεση με τον λογαριασμό υπηρεσίας του Firebase ----------------
