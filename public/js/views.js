@@ -8,7 +8,7 @@ import {
   kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround, shortLeave, shortHoursOf,
 } from "./logic.js";
 import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES, prepareSignature } from "./docgen.js";
-import { DEFAULT_KINDS, DEFAULT_SETTINGS, PROFILE_FIELDS, SIGNER_DEFAULTS } from "./defaults.js";
+import { DEFAULT_KINDS, DEFAULT_SETTINGS, PROFILE_FIELDS, PROFILE_DERIVED, SIGNER_DEFAULTS } from "./defaults.js";
 import { esc, toast, dialog, confirmDlg } from "./ui.js";
 import { OWNER_EMAIL } from "./config.js";
 
@@ -683,7 +683,9 @@ export function renderSettings(el) {
   el.querySelector("#prof").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const d = Object.fromEntries([...new FormData(ev.target).entries()].map(([k, v]) => [k, String(v).trim()]));
-    await saveProfile({ ...state.profile, ...d });
+    const merged = { ...state.profile, ...d };
+    PROFILE_DERIVED.forEach((k) => delete merged[k]);
+    await saveProfile(merged);
     toast("Αποθηκεύτηκαν τα στοιχεία");
   });
   const sgBox = el.querySelector("#signers");

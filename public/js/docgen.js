@@ -136,7 +136,13 @@ export function formFor(code) {
 }
 
 /** Προσωπικά στοιχεία → πεδία {{p_…}} των προτύπων */
-export const profileValues = (p = {}) => Object.fromEntries(Object.entries(p).map(([k, v]) => [`p_${k}`, v ?? ""]));
+export function profileValues(p = {}) {
+  const name = [p.firstName, p.lastName].filter(Boolean).join(" ");
+  // ίδια στοιχεία παντού: ονοματεπώνυμο = όνομα + επώνυμο, κλάδος ίδιος σε όλα τα έντυπα
+  const all = { ...p, fullName: name, fullNameCaps: name, specialtyShort: p.specialty || "", kladosText: p.specialty || "" };
+  delete all.signers;
+  return Object.fromEntries(Object.entries(all).map(([k, v]) => [`p_${k}`, v ?? ""]));
+}
 
 /** Τσεκάρει τα κουτιά (FORMCHECKBOX) των παραγράφων που το κείμενό τους είναι μία από τις ετικέτες */
 function checkBoxes(doc, labels) {
