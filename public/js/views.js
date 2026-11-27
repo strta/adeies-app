@@ -1,13 +1,13 @@
 // Οθόνες της εφαρμογής.
 import {
-  state, setDay, setDays, saveKinds, saveSettings, saveTemplate, saveRepo, deleteRepo, saveBlood, deleteBlood,
+  state, setDay, setDays, saveKinds, saveSettings, saveTemplate, saveSignature, saveRepo, deleteRepo, saveBlood, deleteBlood,
   importOts, importHistory, backupData, logout, DEMO,
 } from "./store.js";
 import {
   MONTHS, WEEKDAYS, isoOf, parts, daysInMonth, weekday, dmy, todayIso, eachDay, greekHolidays, holidayName,
   kindMap, monthStats, yearStats, balances, overtimeRows, reconcile, HOLIDAY, blockAround, shortLeave, shortHoursOf,
 } from "./logic.js";
-import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES } from "./docgen.js";
+import { buildOvertimeDoc, download, loadScript, buildForm, formFor, FORMS, ADEIA_BOXES, prepareSignature } from "./docgen.js";
 import { DEFAULT_KINDS, DEFAULT_SETTINGS } from "./defaults.js";
 import { esc, toast, dialog, confirmDlg } from "./ui.js";
 import { OWNER_EMAIL } from "./config.js";
@@ -17,6 +17,8 @@ const kinds = () => (state.kinds.length ? state.kinds : DEFAULT_KINDS);
 const km = () => kindMap(kinds());
 const kindName = (code) => km()[code]?.name || code || "";
 const kindColor = (code) => km()[code]?.color || "#607d8b";
+/** Η υπογραφή που μπαίνει στα έγγραφα (null αν δεν υπάρχει ή είναι απενεργοποιημένη) */
+const autoSig = () => (state.signature && settings().autoSign !== false ? state.signature : null);
 const shortDate = (iso) => `${WEEKDAYS[weekday(iso)]} ${dmy(iso)}`;
 
 // Τρέχων μήνας/έτος (κρατιέται όσο είναι ανοιχτή η εφαρμογή)
@@ -111,7 +113,7 @@ export function renderMonth(el) {
   el.querySelector("[data-doc]")?.addEventListener("click", async (ev) => {
     ev.target.disabled = true;
     try {
-      const { blob, name } = await buildOvertimeDoc({ days: state.days, settings: settings(), template: state.template }, y, m);
+      const { blob, name } = await buildOvertimeDoc({ days: state.days, settings: settings(), template: state.template, signature: autoSig() }, y, m);
       download(blob, name);
       toast("Κατέβηκε: " + name);
     } catch (e) { console.error(e); toast("Σφάλμα: " + e.message, 5000); }
@@ -201,7 +203,8 @@ async function applicationDialog(iso, code) {
   const [form, sub] = ff;
   const today = todayIso();
   const b = blockAround(state.days, iso, code);
-  const dateRow = `<label>Ημερομηνία αίτησης</label><input type="date" name="today" value="${today}" required>`;
+  const dateRow = `<label>Ημερομηνία αίτησης</label><input type="date" name="today" value="${today}" required>` +
+    (state.signature ? `<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="sign" style="width:auto" ${autoSig() ? "checked" : ""}> Με την υπογραφή μου</label>` : "");
   let body = "";
   if (form === "adeia") {
     body = `<label>Είδος στο έντυπο</label><select name="box">${ADEIA_BOXES.map((x) => `<option ${x === sub ? "selected" : ""}>${x}</option>`).join("")}</select>
@@ -248,6 +251,7 @@ async function applicationDialog(iso, code) {
     opts = { dropParaWith: [data.mode === "yd" ? "{{to}}" : "{{sickText}}"] };
     name = `Αίτηση αναρρωτικής ${dmy(data.from).replace(/\//g, "-")}.docx`;
   }
+  opts.signature = data.sign ? state.signature : null;
   const blob = await buildForm(form, v, opts);
   download(blob, name);
   toast("Κατέβηκε: " + name);
@@ -491,6 +495,18 @@ export function renderSettings(el) {
     </table>
     <div class="row wrap" style="margin-top:10px"><button class="btn" id="kadd">+ Είδος</button><button class="btn primary" id="ksave">Αποθήκευση ειδών</button></div></div>
 
+    <h2>Υπογραφή</h2>
+    <div class="card">
+      ${state.signature ? `<div style="background:#fff;border-radius:8px;padding:8px;display:inline-block"><img src="data:image/png;base64,${state.signature.b64}" alt="Υπογραφή" style="height:70px"></div>` : `<div class="muted">Δεν έχει οριστεί υπογραφή.</div>`}
+      <p class="muted">Μπαίνει μόνο εκεί που υπογράφεις εσύ («Ο Αιτών», «Υπάλληλος» στο σημείωμα υπερωριών) — ποτέ στις θέσεις των προϊσταμένων.
+        Φωτογραφία ή σκανάρισμα σε λευκό χαρτί· το λευκό γίνεται διάφανο αυτόματα. Αποθηκεύεται μόνο στον λογαριασμό σου.</p>
+      <div class="row wrap">
+        <label class="btn" style="margin:0;color:var(--text)">⬆ ${state.signature ? "Αλλαγή" : "Ανέβασμα"}<input type="file" id="sigPut" accept="image/*" hidden></label>
+        ${state.signature ? `<button class="btn danger" id="sigDel">Αφαίρεση</button>` : ""}
+      </div>
+      ${state.signature ? `<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="autoSign" style="width:auto" ${s.autoSign !== false ? "checked" : ""}> Αυτόματα σε όλα τα έγγραφα</label>` : ""}
+    </div>
+
     <h2>Πρότυπο σημειώματος υπερωριών</h2>
     <div class="card">
       <div>${state.template?.name ? `Δικό σου πρότυπο: <b>${esc(state.template.name)}</b>` : "Χρησιμοποιείται το αρχικό πρότυπο."}</div>
@@ -565,6 +581,19 @@ export function renderSettings(el) {
     } catch (e) { toast("Σφάλμα: " + e.message, 6000); }
     ev.target.value = "";
   });
+  el.querySelector("#sigPut").addEventListener("change", async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    try {
+      const sig = await prepareSignature(f);
+      await saveSignature({ ...sig, updatedAt: new Date().toISOString() });
+      toast("Αποθηκεύτηκε η υπογραφή");
+    } catch (e) { toast("Σφάλμα: " + e.message, 6000); }
+    ev.target.value = "";
+  });
+  el.querySelector("#sigDel")?.addEventListener("click", async () => {
+    if (await confirmDlg("Αφαίρεση της υπογραφής;", "Αφαίρεση", true)) { await saveSignature({}); toast("Αφαιρέθηκε"); }
+  });
+  el.querySelector("#autoSign")?.addEventListener("change", (e) => saveSettings({ autoSign: e.target.checked }));
   el.querySelector("#tplReset")?.addEventListener("click", async () => { await saveTemplate({}); toast("Επαναφορά αρχικού προτύπου"); });
 }
 
